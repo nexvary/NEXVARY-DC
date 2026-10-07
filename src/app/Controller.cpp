@@ -9,14 +9,19 @@
 #include <QProcess>
 #include <QSqlQuery>
 #include <QDateTime>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QUrl>
 namespace {
 QJsonObject fail(const QString &text) {return {{"status","error"},{"message",text}};}
-QJsonObject process(const QString &exe,const QStringList &args,bool smart=false) {
+QJsonObject process(const QString &exe,const QStringList &args,bool smart=false,std::atomic_bool *cancel=nullptr) {
  QProcess p;p.setProcessChannelMode(QProcess::SeparateChannels);p.start(exe,args);
  if(!p.waitForStarted(5000)) return fail("Engine unavailable: "+exe+". Install the engine separately; no bundled engines yet.");
- if(!p.waitForFinished(15000)) {p.kill();p.waitForFinished(2000);return fail("Engine timed out; process stopped.");}
+ QElapsedTimer timeout;timeout.start();
+ while(!p.waitForFinished(100) && p.state()!=QProcess::NotRunning) {
+  if(cancel && cancel->load()){p.kill();p.waitForFinished(2000);return {{"status","cancelled"},{"message","Read engine stopped."}};}
+  if(timeout.elapsed()>15000){p.kill();p.waitForFinished(2000);return fail("Engine timed out; process stopped.");}
+ }
  auto bytes=p.readAllStandardOutput();
  auto doc=QJsonDocument::fromJson(bytes);
  if(p.exitStatus()!=QProcess::NormalExit || doc.isNull()) return fail(QString::fromUtf8(p.readAllStandardError()).left(2000)+" Engine returned no valid JSON.");
@@ -56,7 +61,7 @@ Controller::Controller(QObject *parent):QObject(parent) {
  });
  refresh();
 }
-Controller::~Controller(){m_cancel=true;m_watcher.waitForFinished();m_db.close();}
+Controller::~Controller(){m_cancel=true;m_watcher.waitForFinished();m_db.close();m_db=QSqlDatabase();QSqlDatabase::removeDatabase("dc-history");}
 void Controller::start(const QString &name,Work work) {
  if(m_busy)return;
  m_operation=name;m_cancel=false;m_busy=true;m_progress=0;
@@ -70,12 +75,12 @@ void Controller::refresh() {
  for(const auto &v:QStorageInfo::mountedVolumes()) if(v.isValid() && v.isReady() && v.bytesTotal()>0)
   m_volumes.append(QVariantMap{{"root",v.rootPath()},{"name",v.displayName()},{"device",QString::fromUtf8(v.device())},{"bytes",double(v.bytesTotal())},{"free",double(v.bytesAvailable())},{"readOnly",v.isReadOnly()},{"filesystem",QString::fromUtf8(v.fileSystemType())}});
  emit volumesChanged();
- start("disk_discovery",[]{
+ start("disk_discovery",[this]{
 #ifdef Q_OS_WIN
   const QString command="@{ devices = @(Get-CimInstance Win32_DiskDrive | Select-Object DeviceID,Model,SerialNumber,Size,InterfaceType) } | ConvertTo-Json -Depth 4 -Compress";
-  return process("powershell.exe",{"-NoProfile","-NonInteractive","-Command",command});
+  return process("powershell.exe",{"-NoProfile","-NonInteractive","-Command",command},false,&m_cancel);
 #else
-  return process("lsblk",{"--json","--bytes","--nodeps","--output","PATH,MODEL,SERIAL,SIZE,TRAN,TYPE"});
+  return process("lsblk",{"--json","--bytes","--nodeps","--output","PATH,MODEL,SERIAL,SIZE,TRAN,TYPE"},false,&m_cancel);
 #endif
  });
 }
@@ -85,7 +90,7 @@ void Controller::inspectHealth(const QString &device) {
  if(!known) {setResult(fail("Select an enumerated disk. Arbitrary device paths are rejected."));return;}
  auto engine=QStandardPaths::findExecutable("smartctl");
  if(engine.isEmpty()){setResult(fail("smartctl is not installed or not on PATH. SMART unavailable; disk health is unknown."));return;}
- start("smart_read",[engine,device]{return process(engine,{"--json","--all",device},true);});
+ start("smart_read",[this,engine,device]{return process(engine,{"--json","--all",device},true,&m_cancel);});
 }
 void Controller::scanImage(const QString &path) {
  if(m_busy)return;

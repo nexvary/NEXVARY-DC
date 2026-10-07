@@ -1,10 +1,10 @@
 # Verification — 0.1.0 foundation
 
-Status: Linux Release build passed. All five CTest targets passed (core, controller, overview startup, compact Arabic capacity page, compact English capacity page). Windows CI is pending.
+Status: Linux Release build passed. All five CTest targets passed (core, controller, overview startup, compact Arabic capacity page, compact English capacity page). The initial Linux CI passed (run 37584745321). The initial Windows build passed, but its Test step stalled. The smoke-test exit path was changed to bypass the interactive close guard, external-engine cancellation was implemented, and 45-second CTest limits plus a 15-minute CI job limit were added. Updated Windows CI is pending.
 
 The core suite passed eight substantive test cases, including injected wrapped-address media, single-byte corruption and forced write failure. A real temporary-directory test verified 1 MiB, retained an existing user file and removed all application test files. UI screenshots were captured from the running executable and inspected. No QML warnings occurred in the startup smoke tests.
 
-Scope: real executable + original file-operation core, not hardware repair claims. Automated tests exercise wrapped fake media, corruption, write failure, cancellation, exclusive copy, SHA-256 readback, test-file cleanup and preservation of an existing user file. Controller tests exercise async jobs, single-job exclusion, history and export. UI smoke runs include Arabic and English capacity workspaces at the minimum window size.
+Scope: real executable + original file-operation core, not hardware repair claims. Automated tests exercise wrapped fake media, corruption, write failure, cancellation, exclusive copy, SHA-256 readback, test-file cleanup and preservation of an existing user file. A Linux slow-discovery cancellation test passed. Controller tests exercise async jobs, single-job exclusion, history and export. UI smoke runs include Arabic and English capacity workspaces at the minimum window size.
 
 Hardware not validated: physical SMART reads, USB/card readers, physically failing HDDs, real counterfeit media, vendor firmware or raw repair. Exact original capacity detection is not shipped. No raw erase, remap, firmware update or partition repair is shipped.
 

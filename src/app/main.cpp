@@ -25,7 +25,7 @@ int main(int argc,char **argv) {
  const int page=args.indexOf("--page");
  if(page>=0 && page+1<args.size())root->setProperty("page",qBound(0,args[page+1].toInt(),6));
  if(args.contains("--compact")){root->setProperty("width",980);root->setProperty("height",700);}
- if(smoke)QTimer::singleShot(2000,&app,&QCoreApplication::quit);
+ if(smoke)QTimer::singleShot(2000,&app,[]{QCoreApplication::exit(0);});
  const int shot=args.indexOf("--screenshot");
  if(shot>=0 && shot+1<args.size())QTimer::singleShot(2500,&app,[&engine,&app,args,shot]{auto *window=qobject_cast<QQuickWindow*>(engine.rootObjects().first());app.exit(window && window->grabWindow().save(args[shot+1])?0:2);});
  return app.exec();

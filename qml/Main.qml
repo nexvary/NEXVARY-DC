@@ -12,6 +12,10 @@ ApplicationWindow {
  property string historyReport: ""
  property string notice: ""
  function t(ar, en) { return arabic ? ar : en }
+ function operationName(value) {
+  const labels = {"disk_discovery": t("اكتشاف الأقراص", "Disk discovery"), "smart_read": t("قراءة SMART", "SMART read"), "image_read": t("فحص صورة قرص", "Image inspection"), "image_copy": t("نسخ صورة قرص", "Image copy"), "directory_capacity_test": t("اختبار مساحة مختارة", "Selected-space test")}
+  return labels[value] || t("غير محددة", "Unspecified")
+ }
  function size(bytes) { return (Number(bytes) / 1073741824).toFixed(2) + " GiB" }
  property var names: [t("نظرة عامة","Overview"),t("تشخيص الأقراص","Disk diagnostics"),t("إنقاذ البيانات","Data rescue"),t("الصيانة وFirmware","Maintenance & firmware"),t("الفلاشات والذاكرة","Flash & memory cards"),t("كشف السعة المزيفة","Capacity verification"),t("التقارير والسجل","Reports & history")]
  LayoutMirroring.enabled: arabic
@@ -158,6 +162,7 @@ ApplicationWindow {
       visible:root.page!==0&&root.page!==3&&root.page!==4;Layout.fillWidth:true
       ColumnLayout {anchors.fill:parent;spacing:12
        RowLayout {Layout.fillWidth:true;Label {text:root.t("نتيجة العملية الحالية","Current operation result");font.bold:true;font.pixelSize:17;color:"#e8f1f8";Layout.fillWidth:true}ActionButton {text:root.t("تصدير JSON","Export JSON");enabled:!backend.busy&&backend.report.length>0;onClicked:reportDialog.open()} }
+       Label {Layout.fillWidth:true;wrapMode:Text.WordWrap;color:"#8db9d6";text:root.t("آخر عملية: ","Last operation: ")+root.operationName(backend.result.operation)}
        Label {Layout.fillWidth:true;wrapMode:Text.WordWrap;font.bold:true;font.pixelSize:18;color:backend.result.status==="completed"?"#8cdbc1":"#e2bd79";text:backend.result.status==="completed"?root.t("اكتملت العملية ضمن نطاق الاختبار","Operation completed within its test scope"):backend.result.status==="mismatch"?root.t("اختلاف في البيانات: سعة مغشوشة أو عطل محتمل","Data mismatch: counterfeit capacity or storage fault suspected"):backend.result.status==="running"?root.t("جارٍ التنفيذ","Running"):backend.result.status==="cancelled"?root.t("أُلغيت العملية؛ النتيجة غير مكتملة","Cancelled; result incomplete"):root.t("تعذرت العملية؛ راجع التفاصيل","Operation failed; see details")}
        RowLayout {visible:backend.result.verifiedBytes!==undefined;Layout.fillWidth:true;Label {text:root.t("المساحة المختبرة: ","Tested: ")+root.size(backend.result.writtenBytes||0);color:"#c2d6e5";Layout.fillWidth:true}Label {text:root.t("اجتازت التحقق: ","Verified: ")+root.size(backend.result.verifiedBytes||0);color:"#8edbc1";Layout.fillWidth:true}Label {text:root.t("فشلت: ","Failed: ")+root.size(backend.result.failedBytes||0);color:"#e0bc79";Layout.fillWidth:true}}
        Label {visible:backend.result.operation==="directory_capacity_test";Layout.fillWidth:true;wrapMode:Text.WordWrap;color:"#d5bb7b";text:root.t("هذه ليست السعة الأصلية الكاملة؛ النتيجة تخص ملفات الاختبار فقط.","This is not the full original capacity; results cover only the test files.")}

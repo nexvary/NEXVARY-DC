@@ -7,6 +7,16 @@
 class ControllerTests:public QObject {
  Q_OBJECT
 private slots:
+ void initTestCase(){QStandardPaths::setTestModeEnabled(true);QCoreApplication::setApplicationName("DC-controller-test");}
+#ifndef Q_OS_WIN
+ void cancelsSlowDiscovery(){
+  QTemporaryDir d;QFile stub(d.filePath("lsblk"));QVERIFY(stub.open(QIODevice::WriteOnly));
+  stub.write("#!/bin/sh\nsleep 10\nprintf '{\"blockdevices\":[]}'\n");stub.close();QVERIFY(stub.setPermissions(QFile::ReadOwner|QFile::WriteOwner|QFile::ExeOwner));
+  const auto old=qgetenv("PATH");qputenv("PATH",d.path().toUtf8()+":"+old);
+  {Controller c;QVERIFY(c.busy());QTest::qWait(100);c.cancel();QTRY_VERIFY_WITH_TIMEOUT(!c.busy(),3000);QCOMPARE(c.result().value("status").toString(),"cancelled");}
+  qputenv("PATH",old);
+ }
+#endif
  void jobsHistoryAndExport(){
   QStandardPaths::setTestModeEnabled(true);
   QCoreApplication::setApplicationName("DC-controller-test");
