@@ -1,0 +1,53 @@
+#pragma once
+#include <QObject>
+#include <QVariantList>
+#include <QFutureWatcher>
+#include <QJsonObject>
+#include <QSqlDatabase>
+#include <atomic>
+#include <functional>
+class Controller : public QObject {
+ Q_OBJECT
+ Q_PROPERTY(QVariantList volumes READ volumes NOTIFY volumesChanged)
+ Q_PROPERTY(QVariantList disks READ disks NOTIFY disksChanged)
+ Q_PROPERTY(QVariantList history READ history NOTIFY historyChanged)
+ Q_PROPERTY(bool busy READ busy NOTIFY stateChanged)
+ Q_PROPERTY(double progress READ progress NOTIFY stateChanged)
+ Q_PROPERTY(QString report READ report NOTIFY reportChanged)
+ Q_PROPERTY(QVariantMap result READ result NOTIFY reportChanged)
+ Q_PROPERTY(QString storageNotice READ storageNotice CONSTANT)
+public:
+ explicit Controller(QObject *parent=nullptr);
+ ~Controller() override;
+ QVariantList volumes() const {return m_volumes;}
+ QVariantList disks() const {return m_disks;}
+ QVariantList history() const {return m_history;}
+ bool busy() const {return m_busy;}
+ double progress() const {return m_progress;}
+ QString report() const {return m_report;}
+ QVariantMap result() const {return m_result;}
+ QString storageNotice() const {return m_storageNotice;}
+ Q_INVOKABLE void refresh();
+ Q_INVOKABLE void inspectHealth(const QString &device);
+ Q_INVOKABLE void scanImage(const QString &path);
+ Q_INVOKABLE void copyImage(const QString &source,const QString &destination);
+ Q_INVOKABLE void testCapacity(const QString &directory,int mib,bool acknowledged);
+ Q_INVOKABLE void cancel();
+ Q_INVOKABLE bool exportReport(const QString &destination);
+ Q_INVOKABLE QString localPath(const QString &url) const;
+signals:
+ void volumesChanged();void disksChanged();void historyChanged();void stateChanged();void reportChanged();
+private:
+ using Work=std::function<QJsonObject()>;
+ void start(const QString &name,Work work);
+ void setResult(const QJsonObject &result);
+ void loadHistory();
+ QVariantList m_volumes,m_disks,m_history;
+ QVariantMap m_result;
+ QFutureWatcher<QJsonObject> m_watcher;
+ QSqlDatabase m_db;
+ std::atomic_bool m_cancel{false};
+ bool m_busy=false;
+ double m_progress=0;
+ QString m_report,m_operation,m_storageNotice;
+};
