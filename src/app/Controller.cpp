@@ -1,5 +1,14 @@
 #include "Controller.h"
 #include "Operations.h"
+#include "StoragePolicy.h"
+#include "MediaRead.h"
+#include <QCoreApplication>
+#include <QTemporaryDir>
+#include <QUuid>
+#ifdef Q_OS_WIN
+#include <windows.h>
+#include <shellapi.h>
+#endif
 #include <QtConcurrent>
 #include <QStorageInfo>
 #include <QStandardPaths>
@@ -16,7 +25,7 @@ namespace {
 QJsonObject fail(const QString &text) {return {{"status","error"},{"message",text}};}
 QJsonObject process(const QString &exe,const QStringList &args,bool smart=false,std::atomic_bool *cancel=nullptr) {
  QProcess p;p.setProcessChannelMode(QProcess::SeparateChannels);p.start(exe,args);
- if(!p.waitForStarted(5000)) return fail("Engine unavailable: "+exe+". Install the engine separately; no bundled engines yet.");
+ if(!p.waitForStarted(5000)) return fail("Engine unavailable: "+exe+". Required engine could not be started.");
  QElapsedTimer timeout;timeout.start();
  while(!p.waitForFinished(100) && p.state()!=QProcess::NotRunning) {
   if(cancel && cancel->load()){p.kill();p.waitForFinished(2000);return {{"status","cancelled"},{"message","Read engine stopped."}};}
@@ -28,9 +37,34 @@ QJsonObject process(const QString &exe,const QStringList &args,bool smart=false,
  if(!smart && p.exitCode()!=0) return fail("Device enumeration failed.");
  // smartctl exit status is a bitmask: failing health is valuable data, not discarded.
  QJsonObject result=doc.isObject()?doc.object():QJsonObject{{"devices",doc.array()}};
- result.insert("status",smart && (p.exitCode()&3)?"error":"completed");result.insert("engineExitCode",p.exitCode());
+ result.insert("status",smart && (p.exitCode()&7)?"error":"completed");result.insert("engineExitCode",p.exitCode());
  result.insert("operation",smart?"smart_read":"disk_discovery");
+ if(smart){result.insert("summary",dc::summarizeSmart(result));QStringList messages;for(auto m:result.value("smartctl").toObject().value("messages").toArray())messages.append(m.toObject().value("string").toString());if(!messages.isEmpty())result.insert("message",messages.join("; "));}
  return result;
+}
+QJsonObject storageProcess(const QJsonObject &request,std::atomic_bool *cancel=nullptr) {
+#ifdef Q_OS_WIN
+ QTemporaryDir dir;
+ if(!dir.isValid())return fail("Cannot stage storage helper.");
+ for(const auto &name:QStringList{"storage.ps1","policy.ps1"}) {
+  QFile src(":/storage/"+name);
+  if(!src.copy(dir.filePath(name)))return fail("Storage helper unavailable.");
+ }
+ const QString encoded=QString::fromLatin1(QJsonDocument(request).toJson(QJsonDocument::Compact).toBase64());
+ QProcess p;p.start("powershell.exe",{"-NoProfile","-NonInteractive","-ExecutionPolicy","Bypass","-File",dir.filePath("storage.ps1"),"-RequestBase64",encoded});
+ if(!p.waitForStarted(5000))return fail("Cannot start Windows storage service.");
+ const bool inventory=request.value("action")=="inventory";
+ QElapsedTimer timer;timer.start();
+ while(!p.waitForFinished(100) && p.state()!=QProcess::NotRunning) {
+  if(inventory && ((cancel && cancel->load()) || timer.elapsed()>20000)){p.kill();p.waitForFinished();return QJsonObject{{"status","cancelled"},{"operation","disk_discovery"},{"message","Device discovery stopped."}};}
+  // Never terminate a filesystem or partition mutation halfway through.
+ }
+ QJsonParseError error;auto doc=QJsonDocument::fromJson(p.readAllStandardOutput().trimmed(),&error);
+ if(p.exitStatus()!=QProcess::NormalExit || error.error!=QJsonParseError::NoError || !doc.isObject())return fail("Storage helper failed: "+QString::fromUtf8(p.readAllStandardError()).left(2000));
+ return doc.object();
+#else
+ Q_UNUSED(request);Q_UNUSED(cancel);return fail("Storage management is implemented for Windows in this release.");
+#endif
 }
 }
 Controller::Controller(QObject *parent):QObject(parent) {
@@ -48,7 +82,7 @@ Controller::Controller(QObject *parent):QObject(parent) {
    m_disks.clear();
 #ifdef Q_OS_WIN
    const auto list=result.value("devices").toArray();
-   for(auto item:list) {const auto d=item.toObject();m_disks.append(QVariantMap{{"device",d.value("DeviceID").toString()},{"model",d.value("Model").toString()},{"serial",d.value("SerialNumber").toString()},{"bytes",d.value("Size").toVariant()},{"transport",d.value("InterfaceType").toString()}});}
+   for(auto item:list) {const auto d=item.toObject();m_disks.append(d.toVariantMap());}
 #else
    for(auto item:result.value("blockdevices").toArray()) {const auto d=item.toObject();if(d.value("type")!="disk")continue;m_disks.append(QVariantMap{{"device",d.value("path").toString()},{"model",d.value("model").toString()},{"serial",d.value("serial").toString()},{"bytes",d.value("size").toVariant()},{"transport",d.value("tran").toString()}});}
 #endif
@@ -64,6 +98,7 @@ Controller::Controller(QObject *parent):QObject(parent) {
 Controller::~Controller(){m_cancel=true;m_watcher.waitForFinished();m_db.close();m_db=QSqlDatabase();QSqlDatabase::removeDatabase("dc-history");}
 void Controller::start(const QString &name,Work work) {
  if(m_busy)return;
+ m_mutating=name.startsWith("storage_");
  m_operation=name;m_cancel=false;m_busy=true;m_progress=0;
  m_report=QString::fromUtf8(QJsonDocument(QJsonObject{{"status","running"},{"operation",name}}).toJson(QJsonDocument::Indented));
  m_result = QVariantMap{{"status","running"},{"operation",name}};
@@ -77,8 +112,7 @@ void Controller::refresh() {
  emit volumesChanged();
  start("disk_discovery",[this]{
 #ifdef Q_OS_WIN
-  const QString command="@{ devices = @(Get-CimInstance Win32_DiskDrive | Select-Object DeviceID,Model,SerialNumber,Size,InterfaceType) } | ConvertTo-Json -Depth 4 -Compress";
-  return process("powershell.exe",{"-NoProfile","-NonInteractive","-Command",command},false,&m_cancel);
+  return storageProcess(QJsonObject{{"action","inventory"}},&m_cancel);
 #else
   return process("lsblk",{"--json","--bytes","--nodeps","--output","PATH,MODEL,SERIAL,SIZE,TRAN,TYPE"},false,&m_cancel);
 #endif
@@ -88,7 +122,8 @@ void Controller::inspectHealth(const QString &device) {
  if(m_busy)return;
  bool known=false;for(const auto &d:m_disks) if(d.toMap().value("device").toString()==device)known=true;
  if(!known) {setResult(fail("Select an enumerated disk. Arbitrary device paths are rejected."));return;}
- auto engine=QStandardPaths::findExecutable("smartctl");
+ auto engine=QDir(QCoreApplication::applicationDirPath()).filePath("engines/smartctl.exe");
+ if(!QFile::exists(engine))engine=QStandardPaths::findExecutable("smartctl");
  if(engine.isEmpty()){setResult(fail("smartctl is not installed or not on PATH. SMART unavailable; disk health is unknown."));return;}
  start("smart_read",[this,engine,device]{return process(engine,{"--json","--all",device},true,&m_cancel);});
 }
@@ -104,10 +139,10 @@ void Controller::testCapacity(const QString &dir,int mib,bool ack) {
  if(m_busy)return;
  start("directory_capacity_test",[this,dir,mib,ack]{return dc::testDirectory(dir,mib,ack,{&m_cancel,[this](qint64 n,qint64 total){QMetaObject::invokeMethod(this,[this,n,total]{m_progress=total?double(n)/double(total):0;emit stateChanged();},Qt::QueuedConnection);}});});
 }
-void Controller::cancel(){m_cancel=true;}
+void Controller::cancel(){if(interruptible())m_cancel=true;}
 QString Controller::localPath(const QString &url) const {QUrl u(url);return u.isLocalFile()?u.toLocalFile():url;}
 void Controller::setResult(const QJsonObject &input) {
- auto result=input;result.insert("appVersion","0.1.0");result.insert("recordedAt",QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+ auto result=input;result.insert("appVersion","0.2.0");result.insert("recordedAt",QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
  m_report=QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Indented));
  if(m_db.isOpen()) {QSqlQuery q(m_db);q.prepare("INSERT INTO operations(created,operation,report) VALUES(?,?,?)");q.addBindValue(result.value("recordedAt").toString());q.addBindValue(result.value("operation").toString(m_operation));q.addBindValue(m_report);if(!q.exec()){result.insert("historySaved",false);m_report=QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Indented));}}
  m_result=result.toVariantMap();
@@ -118,4 +153,61 @@ bool Controller::exportReport(const QString &dest) {
  if(m_report.isEmpty() || m_busy)return false;
  QFile f(dest);if(!f.open(QIODevice::WriteOnly|QIODevice::NewOnly))return false;
  auto bytes=m_report.toUtf8();bool ok=f.write(bytes)==bytes.size() && f.flush();f.close();if(!ok)f.remove();return ok;
+}
+
+bool Controller::windows() const {
+#ifdef Q_OS_WIN
+ return true;
+#else
+ return false;
+#endif
+}
+bool Controller::administrator() const {
+#ifdef Q_OS_WIN
+ SID_IDENTIFIER_AUTHORITY auth=SECURITY_NT_AUTHORITY;PSID group=nullptr;BOOL admin=FALSE;
+ if(AllocateAndInitializeSid(&auth,2,SECURITY_BUILTIN_DOMAIN_RID,DOMAIN_ALIAS_RID_ADMINS,0,0,0,0,0,0,&group)){CheckTokenMembership(nullptr,group,&admin);FreeSid(group);}return admin;
+#else
+ return false;
+#endif
+}
+bool Controller::relaunchAdministrator() {
+#ifdef Q_OS_WIN
+ if(m_busy)return false;
+ auto exe=QDir::toNativeSeparators(QCoreApplication::applicationFilePath());
+ auto result=ShellExecuteW(nullptr,L"runas",reinterpret_cast<LPCWSTR>(exe.utf16()),nullptr,nullptr,SW_SHOWNORMAL);
+ if(reinterpret_cast<INT_PTR>(result)>32){QCoreApplication::quit();return true;}
+#endif
+ return false;
+}
+QVariantMap Controller::prepareStorage(const QString &device,const QString &action,int part,const QString &fs,const QString &style,int mib,const QString &source) {
+ m_pendingToken.clear();m_pending={};
+ if(m_busy)return QVariantMap{{"error","Wait for the current operation."}};
+ if(!windows())return QVariantMap{{"error","Storage management in this release requires Windows."}};
+ if(!administrator())return QVariantMap{{"error","Administrator permission required. Relaunch and select the disk again."}};
+ QJsonObject d;for(const auto &v:m_disks)if(v.toMap().value("device").toString()==device)d=QJsonObject::fromVariantMap(v.toMap());
+ auto r=d;r.insert("action",action);r.insert("partition",part);r.insert("filesystem",fs);r.insert("style",style);r.insert("sizeMiB",mib);r.insert("source",source);
+ for(auto p:d.value("partitions").toArray())if(p.toObject().value("partition").toInt()==part){r.insert("offset",p.toObject().value("offset"));r.insert("partitionBytes",p.toObject().value("partitionBytes"));}
+ const auto error=dc::validateStorageRequest(d,r);if(!error.isEmpty())return QVariantMap{{"error",error}};
+ m_pending=r;m_pendingToken=QUuid::createUuid().toString(QUuid::WithoutBraces);m_pendingExpires=QDateTime::currentSecsSinceEpoch()+180;
+ return QVariantMap{{"token",m_pendingToken},{"device",device},{"model",d.value("model").toString()},{"bytes",d.value("bytes").toVariant()},{"action",action},{"partition",part},{"challenge",device},{"allData",action=="layout" || action=="windows_usb"}};
+}
+void Controller::executeStorage(const QString &token,const QString &confirmation,bool acknowledged) {
+ if(m_busy)return;
+ const auto expected=m_pendingToken;m_pendingToken.clear();
+ if(expected.isEmpty() || token!=expected || QDateTime::currentSecsSinceEpoch()>m_pendingExpires || !acknowledged || confirmation!=m_pending.value("device").toString()) {setResult(fail("Confirmation missing, expired or invalid. No changes made."));return;}
+ auto request=m_pending;m_pending={};
+ start("storage_"+request.value("action").toString(),[request]{return storageProcess(request);});
+}
+
+void Controller::scanSurface(const QString &device,bool acknowledged) {
+ if(m_busy)return;
+ qint64 bytes=0;for(const auto &d:m_disks)if(d.toMap().value("device").toString()==device)bytes=d.toMap().value("bytes").toLongLong();
+ if(!acknowledged || !bytes){setResult(fail("Select an enumerated disk and acknowledge that a full read can stress failing media."));return;}
+ start("surface_read",[this,device,bytes]{return dc::scanMedia(device,bytes,{&m_cancel,[this](qint64 n,qint64 total){QMetaObject::invokeMethod(this,[this,n,total]{m_progress=total?double(n)/double(total):0;emit stateChanged();},Qt::QueuedConnection);}});});
+}
+void Controller::rescueDisk(const QString &device,const QString &destination,bool acknowledged) {
+ if(m_busy)return;
+ qint64 bytes=0;for(const auto &d:m_disks)if(d.toMap().value("device").toString()==device)bytes=d.toMap().value("bytes").toLongLong();
+ if(!acknowledged || !bytes){setResult(fail("Select an enumerated disk and acknowledge rescue limitations."));return;}
+ start("media_rescue",[this,device,bytes,destination]{return dc::rescueMedia(device,bytes,destination,{&m_cancel,[this](qint64 n,qint64 total){QMetaObject::invokeMethod(this,[this,n,total]{m_progress=total?double(n)/double(total):0;emit stateChanged();},Qt::QueuedConnection);}});});
 }

@@ -15,6 +15,9 @@ class Controller : public QObject {
  Q_PROPERTY(double progress READ progress NOTIFY stateChanged)
  Q_PROPERTY(QString report READ report NOTIFY reportChanged)
  Q_PROPERTY(QVariantMap result READ result NOTIFY reportChanged)
+ Q_PROPERTY(bool administrator READ administrator CONSTANT)
+ Q_PROPERTY(bool windows READ windows CONSTANT)
+ Q_PROPERTY(bool interruptible READ interruptible NOTIFY stateChanged)
  Q_PROPERTY(QString storageNotice READ storageNotice CONSTANT)
 public:
  explicit Controller(QObject *parent=nullptr);
@@ -27,8 +30,16 @@ public:
  QString report() const {return m_report;}
  QVariantMap result() const {return m_result;}
  QString storageNotice() const {return m_storageNotice;}
+ bool administrator() const;
+ bool windows() const;
+ bool interruptible() const {return !m_busy || !m_mutating;}
+ Q_INVOKABLE bool relaunchAdministrator();
+ Q_INVOKABLE QVariantMap prepareStorage(const QString &device,const QString &action,int partition,const QString &filesystem,const QString &style,int sizeMiB,const QString &source);
+ Q_INVOKABLE void executeStorage(const QString &token,const QString &confirmation,bool acknowledged);
  Q_INVOKABLE void refresh();
  Q_INVOKABLE void inspectHealth(const QString &device);
+ Q_INVOKABLE void scanSurface(const QString &device,bool acknowledged);
+ Q_INVOKABLE void rescueDisk(const QString &device,const QString &destination,bool acknowledged);
  Q_INVOKABLE void scanImage(const QString &path);
  Q_INVOKABLE void copyImage(const QString &source,const QString &destination);
  Q_INVOKABLE void testCapacity(const QString &directory,int mib,bool acknowledged);
@@ -47,6 +58,10 @@ private:
  QFutureWatcher<QJsonObject> m_watcher;
  QSqlDatabase m_db;
  std::atomic_bool m_cancel{false};
+ QJsonObject m_pending;
+ QString m_pendingToken;
+ qint64 m_pendingExpires=0;
+ bool m_mutating=false;
  bool m_busy=false;
  double m_progress=0;
  QString m_report,m_operation,m_storageNotice;

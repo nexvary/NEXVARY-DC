@@ -1,17 +1,20 @@
-# NEXVARY Disk Care
+# NEXVARY Disk Care 0.2.0
 
-Independent C++20 / Qt 6 desktop storage toolkit. **0.1.0 is a foundation preview, not a finished disk-repair product.** Arabic RTL and English UI.
+C++20 / Qt 6 desktop storage toolkit with Arabic RTL and English. Original colored icon set, developer page and bilingual installer. This remains an experimental build; physical hardware compatibility is not established by CI.
 
 ## Implemented
-- Mounted-volume enumeration, sizes/free space; physical-disk enumeration through read-only OS tools.
-- Optional external `smartctl --json --all` health report for an enumerated disk. No bundled smartctl; unavailable/permission-denied is reported.
-- Read-only regular-image scan with SHA-256.
-- Exclusive-create regular-image copy, source hash, independent destination readback/hash, cancellation and incomplete-copy cleanup.
-- Acknowledged directory write/read test with unique position patterns, flush/sync, and test-file cleanup; detects corruption and wrapped-address behavior in tests.
-- Asynchronous progress, one active job, SQLite history, JSON export.
+- Disk/partition inventory and selected-device context.
+- Bundled Windows smartmontools 7.5; structured SMART temperature, hours, firmware and health/attribute reports when supported.
+- Read-only surface scanning; best-effort Windows physical imaging to a verified different physical disk, zero-filled unreadable chunks, read map and destination SHA-256 readback.
+- Regular image inspection and exclusive-create verified copying.
+- Directory write/read capacity tests with positional patterns; no existing files intentionally overwritten.
+- Windows external USB/SD/MMC management: quick partition format, create/delete partitions, destructive GPT/MBR rebuilding, filesystem scan/repair.
+- Windows x64 UEFI ISO preparation: validate ISO before erase, GPT/FAT32 up to 31 GiB, SHA-256 copied-file checks, DISM large-WIM splitting.
+- Target-specific single-use 180-second confirmation, backup acknowledgement, admin relaunch, disk/partition identity revalidation, internal/system/pagefile protection.
+- Async single active job, progress, SQLite history and report export. JSON is hidden behind technical details.
 
-## Not yet implemented
-Raw disk rescue, partition/file recovery, raw surface tests, sector treatment, erase/sanitize, firmware updates and exact raw capacity probing. These workspaces explain their status. Passing a bounded directory test is **not proof of full device capacity**, and does not mean damaged media is new.
+## Supported limits
+Internal disks cannot be formatted by this release. GPT/MBR rebuild erases all target data. Linux provides diagnostics/image operations and read-only surface scanning; physical rescue destination mapping and storage writes currently require Windows. Surface/rescue unreadable-range granularity is 1 MiB and auto-resume is not implemented. Copy readback can be affected by caching; it is not a physical-media certification. Exact NAND capacity, deleted-file recovery, physical surface regeneration, vendor firmware flashing, BIOS boot and Linux ISO writing are not shipped.
 
 ## Build
 Qt **6.8.x** development package (Core, Concurrent, Gui, Qml, Quick, QuickControls2, Sql, Test), CMake >=3.24 and a C++20 compiler.
@@ -31,11 +34,9 @@ ctest --test-dir build -C Release --output-on-failure
 .\build\Release\nexvary_dc.exe
 ```
 
-Use `packaging/build-windows.ps1` after building to produce a portable folder. CI uploads that folder and attempts an Inno Setup installer. Local Linux tests do not establish a Windows build result.
-
-Optional SMART engine: install smartmontools from its official project/distribution package and add smartctl to PATH. Administrative rights may be necessary. No engine is silently downloaded.
+Run `./packaging/build-windows.ps1` from an MSVC developer terminal to deploy Qt, app-local Microsoft runtime and a checksum-pinned smartmontools 7.5 engine with license/source. Compile `packaging/installer.iss` with Inno Setup 6. Windows CI tests portable startup, silent installation, installed startup and uninstallation.
 
 ## Data handling
-Back up before write tests. Counterfeit storage can corrupt existing data even when tests write only in free space. A directory test checks only allocated test bytes. Only newly created test files are removed by the app. Disk source images should be immutable during use. The preview cannot repair physical damage.
+Back up outside the target before writes. Counterfeit storage may corrupt existing files even during free-space tests. Read-only scans can stress failing drives. Cancelled rescue images and read maps are retained; incomplete images are explicitly marked. Storage mutations cannot be cancelled halfway through; do not disconnect the device or close the application.
 
-See [product scope](docs/PRODUCT.md), [research](docs/RESEARCH.md), [architecture](docs/ARCHITECTURE.md) and [verification](docs/VERIFICATION.md).
+See [scope and nine observations](docs/OBSERVATIONS.md), [research](docs/RESEARCH.md), [architecture](docs/ARCHITECTURE.md) and [verification](docs/VERIFICATION.md).

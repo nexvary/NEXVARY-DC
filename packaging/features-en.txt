@@ -1,0 +1,28 @@
+NEXVARY DISK CARE 0.2.0
+Storage diagnostics and maintenance
+
+INCLUDED FEATURES
+- Physical disk discovery and bundled SMART diagnostics
+- Temperature, operating hours, firmware version and health indicators when supported
+- Read-only physical surface scan with unreadable-range reporting
+- Best-effort disk imaging to a different disk, read map and image readback
+- Image-file inspection, SHA-256 and verified copying
+- Flash/card write-and-read tests over a selected size
+- External USB/SD/MMC partition formatting: exFAT, NTFS, FAT32
+- Create/delete partitions and rebuild GPT/MBR layouts
+- Filesystem scan and repair using Windows storage services
+- Windows x64 UEFI installation media from a compatible ISO
+- Large install.wim splitting via DISM; copied-file SHA-256 readback
+- Local operation history and exportable JSON reports
+- Arabic RTL / English interface and developer information
+
+DEVICE REVIEW BEFORE EVERY STORAGE CHANGE
+Internal/system disks are protected. External disk changes require administrator
+permission, a target-specific confirmation and backup acknowledgement.
+
+IMPORTANT SCOPE
+GPT/MBR rebuilding and boot-media creation erase the target disk.
+Capacity tests cover tested space, not exact physical NAND capacity.
+Rescue records 1 MiB unreadable chunks as zeros and cannot restore those bytes.
+Firmware flashing, physical surface repair, BIOS/Linux boot media and deleted-file
+recovery are not shipped. Physical boot and disk repair have not been hardware-tested.

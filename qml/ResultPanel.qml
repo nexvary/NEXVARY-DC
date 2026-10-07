@@ -1,0 +1,26 @@
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+Panel {
+ id:resultPanel
+ required property var app
+ property var resultData: backend.result
+ ColumnLayout {anchors.fill:parent;spacing:12
+  RowLayout {AppIcon {name:resultPanel.resultData.status==="error"?"maintenance":"reports";Layout.preferredWidth:32;Layout.preferredHeight:32}Label {text:app.t("نتيجة العملية","Operation result");font.pixelSize:18;font.bold:true;color:"#dceaf6";Layout.fillWidth:true}ActionButton {text:app.t("حفظ التقرير","Save report");enabled:!backend.busy;onClicked:app.exportDialog.open()} }
+  Label {text:app.operationName(resultPanel.resultData.operation);color:"#85bbdf";Layout.fillWidth:true;wrapMode:Text.WordWrap}
+  Label {text:resultPanel.resultData.status==="completed"?app.t("اكتملت العملية","Operation completed"):resultPanel.resultData.status==="running"?app.t("جارٍ التنفيذ","Running"):resultPanel.resultData.status==="cancelled"?app.t("أُلغيت العملية","Cancelled"):resultPanel.resultData.status==="mismatch"?app.t("اختلاف في البيانات — خلل أو سعة مغشوشة محتملة","Data mismatch — possible fault or counterfeit storage"):app.t("تعذرت العملية","Operation failed");color:resultPanel.resultData.status==="completed"?"#6bddaf":resultPanel.resultData.status==="error"?"#ff987f":"#f2c782";font.bold:true;font.pixelSize:20;Layout.fillWidth:true;wrapMode:Text.WordWrap}
+  Label {visible:!!resultPanel.resultData.message;text:app.message(resultPanel.resultData.message||"");color:"#c2d3e0";Layout.fillWidth:true;wrapMode:Text.WrapAnywhere;maximumLineCount:6;elide:Text.ElideRight}
+  GridLayout {visible:resultPanel.resultData.summary!==undefined;Layout.fillWidth:true;columns:2;columnSpacing:16;rowSpacing:10
+   Repeater {model:resultPanel.resultData.summary?[{title:app.t("حالة SMART","SMART health"),value:resultPanel.resultData.summary.health==="passed"?app.t("اجتاز — لا يُعد ضمانًا","Passed — not a guarantee"):resultPanel.resultData.summary.health==="failed"?app.t("فشل — انسخ بياناتك فورًا","Failed — back up now"):app.t("غير معروفة","Unknown")},{title:app.t("الحرارة","Temperature"),value:resultPanel.resultData.summary.temperature!==undefined?resultPanel.resultData.summary.temperature+" °C":"—"},{title:app.t("ساعات التشغيل","Power-on hours"),value:resultPanel.resultData.summary.hours!==undefined?resultPanel.resultData.summary.hours:"—"},{title:"Firmware",value:resultPanel.resultData.summary.firmware||"—"}]:[]
+    delegate:Rectangle {required property var modelData;Layout.fillWidth:true;implicitHeight:76;radius:8;color:"#0b1926";border.color:"#284459";Column {anchors.fill:parent;anchors.margins:12;spacing:5;Label {text:modelData.title;color:"#88a8bf";font.pixelSize:12}Label {text:modelData.value;color:"#deedf7";font.pixelSize:15;font.bold:true;width:parent.width;elide:Text.ElideRight}}}
+   }
+  }
+  Repeater {model:resultPanel.resultData.summary?resultPanel.resultData.summary.attributes||[]:[];delegate:RowLayout {required property var modelData;Layout.fillWidth:true;Label {text:(modelData.id?"#"+modelData.id+" · ":"")+modelData.name;color:"#b7cbda";Layout.fillWidth:true;elide:Text.ElideRight}Label {text:String(modelData.raw===undefined?"—":modelData.raw);color:"#eac17b";font.bold:true}} }
+  Label {visible:resultPanel.resultData.unreadableBytes!==undefined;text:app.t("مقاطع تعذرت قراءتها: ","Unreadable chunks: ")+app.size(resultPanel.resultData.unreadableBytes||0);color:"#f0bd7c";Layout.fillWidth:true;wrapMode:Text.WordWrap}
+  RowLayout {visible:resultPanel.resultData.verifiedBytes!==undefined;Layout.fillWidth:true;Label {text:app.t("اجتاز التحقق: ","Verified: ")+app.size(resultPanel.resultData.verifiedBytes||0);color:"#71d9b0";Layout.fillWidth:true}Label {visible:resultPanel.resultData.failedBytes!==undefined;text:app.t("فشل: ","Failed: ")+app.size(resultPanel.resultData.failedBytes||0);color:"#f2b074"} }
+  Label {visible:resultPanel.resultData.operation==="directory_capacity_test";text:app.t("النتيجة تخص المساحة المختبرة، ولا تثبت السعة الأصلية الداخلية كاملة.","The result covers tested space and does not establish full physical capacity.");color:"#e1b97b";Layout.fillWidth:true;wrapMode:Text.WordWrap}
+  Label {visible:resultPanel.resultData.sha256!==undefined;text:"SHA-256: "+(resultPanel.resultData.sha256||"");color:"#94bdda";Layout.fillWidth:true;wrapMode:Text.WrapAnywhere;font.pixelSize:11;LayoutMirroring.enabled:false}
+  CheckBox {id:technical;text:app.t("إظهار التفاصيل التقنية","Show technical details");checked:false}
+  TextArea {visible:technical.checked;Layout.fillWidth:true;Layout.preferredHeight:180;text:backend.report;readOnly:true;selectByMouse:true;wrapMode:TextEdit.WrapAnywhere;color:"#9fc1db";font.family:"monospace";font.pixelSize:11;LayoutMirroring.enabled:false}
+ }
+}

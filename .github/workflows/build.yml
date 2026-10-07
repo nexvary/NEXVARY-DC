@@ -62,6 +62,9 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          $smart = (Resolve-Path out/portable/engines/smartctl.exe).Path
+          & $smart --version
+          if ($LASTEXITCODE -ne 0) { throw "Bundled SMART unavailable" }
           $savedPath = $env:PATH
           $savedPlugins = $env:QT_PLUGIN_PATH
           $savedImports = $env:QML2_IMPORT_PATH
@@ -88,17 +91,36 @@ jobs:
           if (!(Test-Path $compiler)) { throw "Inno Setup compiler unavailable" }
           & $compiler packaging/installer.iss
           if ($LASTEXITCODE -ne 0) { throw "Installer build failed" }
+      - name: Verify installer and uninstaller
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $destination = Join-Path $env:RUNNER_TEMP 'NEXVARY-DC-installed-test'
+          $setup = (Resolve-Path out/NEXVARY-DC-0.2.0-Setup.exe).Path
+          $install = Start-Process $setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/NOICONS',"/DIR=$destination") -PassThru
+          if (!$install.WaitForExit(60000)) { $install.Kill(); throw "Installer timeout" }
+          if ($install.ExitCode -ne 0) { throw "Installation failed: $($install.ExitCode)" }
+          $exe = Join-Path $destination 'nexvary_dc.exe'
+          if (!(Test-Path $exe)) { throw "Installed executable missing" }
+          $env:QT_QPA_PLATFORM = 'offscreen'
+          $env:QT_QUICK_BACKEND = 'software'
+          $app = Start-Process $exe -ArgumentList '--smoke-test' -PassThru
+          if (!$app.WaitForExit(45000)) { $app.Kill(); throw "Installed startup timeout" }
+          if ($app.ExitCode -ne 0) { throw "Installed startup failed: $($app.ExitCode)" }
+          $remove = Start-Process (Join-Path $destination 'unins000.exe') -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -PassThru
+          if (!$remove.WaitForExit(60000)) { $remove.Kill(); throw "Uninstaller timeout" }
+          if ($remove.ExitCode -ne 0 -or (Test-Path $exe)) { throw "Uninstall verification failed" }
       - name: Upload installer
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: NEXVARY-DC-Installer-0.1.0
-          path: out/NEXVARY-DC-0.1.0-Setup.exe
+          name: NEXVARY-DC-Installer-0.2.0
+          path: out/NEXVARY-DC-0.2.0-Setup.exe
           if-no-files-found: error
       - name: Upload Windows artifacts
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: NEXVARY-DC-Portable-0.1.0
+          name: NEXVARY-DC-Portable-0.2.0
           path: out/portable/
           if-no-files-found: error
