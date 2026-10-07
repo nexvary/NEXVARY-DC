@@ -43,6 +43,8 @@ jobs:
         with:
           version: '6.8.3'
           cache: true
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
       - name: Build
@@ -56,6 +58,28 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./packaging/build-windows.ps1
+      - name: Test portable deployment
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $savedPath = $env:PATH
+          $savedPlugins = $env:QT_PLUGIN_PATH
+          $savedImports = $env:QML2_IMPORT_PATH
+          try {
+            $env:PATH = "$env:SystemRoot/System32;$env:SystemRoot;$env:SystemRoot/System32/WindowsPowerShell/v1.0"
+            $env:QT_PLUGIN_PATH = ""
+            $env:QML2_IMPORT_PATH = ""
+            $env:QT_QPA_PLATFORM = "offscreen"
+            $env:QT_QUICK_BACKEND = "software"
+            $exe = (Resolve-Path out/portable/nexvary_dc.exe).Path
+            $proc = Start-Process -FilePath $exe -ArgumentList '--smoke-test' -PassThru
+            if (!$proc.WaitForExit(45000)) { $proc.Kill(); throw "Portable startup timed out" }
+            if ($proc.ExitCode -ne 0) { throw "Portable startup failed: $($proc.ExitCode)" }
+          } finally {
+            $env:PATH = $savedPath
+            $env:QT_PLUGIN_PATH = $savedPlugins
+            $env:QML2_IMPORT_PATH = $savedImports
+          }
       - name: Build installer
         if: runner.os == 'Windows'
         shell: pwsh
@@ -64,10 +88,17 @@ jobs:
           if (!(Test-Path $compiler)) { throw "Inno Setup compiler unavailable" }
           & $compiler packaging/installer.iss
           if ($LASTEXITCODE -ne 0) { throw "Installer build failed" }
+      - name: Upload installer
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: NEXVARY-DC-Installer-0.1.0
+          path: out/NEXVARY-DC-0.1.0-Setup.exe
+          if-no-files-found: error
       - name: Upload Windows artifacts
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: NEXVARY-DC-Windows-0.1.0
-          path: out/
+          name: NEXVARY-DC-Portable-0.1.0
+          path: out/portable/
           if-no-files-found: error
