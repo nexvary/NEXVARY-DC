@@ -15,7 +15,7 @@ Panel {
   Rectangle {Layout.fillWidth:true;height:1;color:"#334c60"}
   Label {text:app.t("بسم الله الرحمن الرحيم","In the name of Allah, the Most Gracious, the Most Merciful");color:"#68d9b0";Layout.fillWidth:true;wrapMode:Text.WordWrap}
   Label {text:app.t("المطور الرئيسي: علاء محمد","Lead developer: Alaa Mohamed");font.pixelSize:22;font.bold:true;color:"#efc983"}
-  Label {text:app.t("هوية المنتج: NEXVARY • بيانات المطور وروابط التواصل من صفحة FG Machines المعتمدة في FG MTM.","Product identity: NEXVARY • Developer details and contact links from the FG Machines developer page used in FG MTM.");color:"#b6cadb";Layout.fillWidth:true;wrapMode:Text.WordWrap}
+  Label {text:app.t("تطوير علاء محمد • هوية المنتج NEXVARY • للتواصل والدعم استخدم الروابط الرسمية أدناه.","Developed by Alaa Mohamed • Product identity: NEXVARY • Contact and support through the official links below.");color:"#b6cadb";Layout.fillWidth:true;wrapMode:Text.WordWrap}
   Label {text:app.t("برنامج مجاني لوجه الله تعالى. هدفنا أدوات واضحة، ونتائج قابلة للتحقق، ومراجعة قبل أي تغيير حساس.","A free application for the sake of Allah. Clear tools, verifiable results and review before sensitive changes.");color:"#b6cadb";Layout.fillWidth:true;wrapMode:Text.WordWrap}
   Flow {Layout.fillWidth:true;spacing:10
    ActionButton {text:"nexvary.com";primary:true;onClicked:Qt.openUrlExternally("https://nexvary.com")}

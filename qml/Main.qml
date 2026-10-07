@@ -38,7 +38,7 @@ ApplicationWindow {
  function chooseIso(callback){isoCallback=callback;isoDialog.open()}
  LayoutMirroring.enabled:arabic;LayoutMirroring.childrenInherit:true
  font.family:Qt.platform.os==="windows"?"Segoe UI":"DejaVu Sans";font.pixelSize:13
- palette.text:"#dce9f4";palette.windowText:"#dce9f4";palette.base:"#0c1b28";palette.button:"#19344a";palette.buttonText:"#dce9f4";palette.highlight:"#3985bd";palette.highlightedText:"#ffffff"
+ palette.placeholderText:"#89a9c0";palette.text:"#dce9f4";palette.windowText:"#dce9f4";palette.base:"#0c1b28";palette.button:"#19344a";palette.buttonText:"#dce9f4";palette.highlight:"#3985bd";palette.highlightedText:"#ffffff"
  Connections {target:backend;function onDisksChanged(){if(root.diskIndex>=backend.disks.length)root.diskIndex=-1}}
  FileDialog {id:sourceDialog;onAccepted:imagePath.text=backend.localPath(selectedFile.toString())}
  FileDialog {id:rescueDialog;fileMode:FileDialog.SaveFile;onAccepted:rescuePath.text=backend.localPath(selectedFile.toString())}
@@ -77,7 +77,7 @@ ApplicationWindow {
     Repeater {model:root.names;delegate:Button {required property string modelData;required property int index;Layout.fillWidth:true;implicitHeight:45
      onClicked:{root.page=index;root.notice=""}
      background:Rectangle {radius:8;color:root.page===index?"#1b3c54":parent.hovered?"#162b3c":"transparent";border.color:root.page===index?"#3e7294":"transparent"}
-     contentItem:RowLayout {spacing:10;AppIcon {name:root.iconNames[index];Layout.preferredWidth:30;Layout.preferredHeight:30}Label {text:modelData;color:root.page===index?"#f3f9ff":"#adc1d0";font.bold:root.page===index;Layout.fillWidth:true;font.pixelSize:12}}
+     contentItem:RowLayout {spacing:10;AppIcon {name:root.iconNames[index];Layout.preferredWidth:30;Layout.preferredHeight:30}Label {text:modelData;color:root.page===index?"#f3f9ff":"#adc1d0";font.bold:root.page===index;Layout.fillWidth:true;font.pixelSize:12;wrapMode:Text.WordWrap}}
     }}
     Item {Layout.fillHeight:true}
     Label {text:backend.administrator?root.t("صلاحيات مسؤول","Administrator"):root.t("وضع المستخدم","User mode");color:backend.administrator?"#efbf78":"#74c7a7";font.pixelSize:11}
