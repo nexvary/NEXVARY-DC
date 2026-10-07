@@ -80,7 +80,8 @@ ApplicationWindow {
      contentItem:RowLayout {spacing:10;AppIcon {name:root.iconNames[index];Layout.preferredWidth:30;Layout.preferredHeight:30}Label {text:modelData;color:root.page===index?"#f3f9ff":"#adc1d0";font.bold:root.page===index;Layout.fillWidth:true;font.pixelSize:12;wrapMode:Text.WordWrap}}
     }}
     Item {Layout.fillHeight:true}
-    Label {text:backend.administrator?root.t("صلاحيات مسؤول","Administrator"):root.t("وضع المستخدم","User mode");color:backend.administrator?"#efbf78":"#74c7a7";font.pixelSize:11}
+    ActionButton {visible:backend.windows&&!backend.administrator;Layout.fillWidth:true;implicitHeight:34;text:root.t("تشغيل كمسؤول","Run as administrator");enabled:!backend.busy;onClicked:if(!backend.relaunchAdministrator())root.notice=root.t("لم تُمنح صلاحيات المسؤول؛ لم يبدأ أي إجراء","Administrator permission was not granted; no operation started")}
+    Label {visible:!backend.windows||backend.administrator;text:backend.administrator?root.t("صلاحيات مسؤول","Administrator"):root.t("وضع المستخدم","User mode");color:backend.administrator?"#efbf78":"#74c7a7";font.pixelSize:11}
     RowLayout {Label {text:"0.2.0";color:"#7999b0"}Item {Layout.fillWidth:true}ActionButton {text:root.arabic?"English":"العربية";implicitWidth:102;implicitHeight:34;onClicked:root.arabic=!root.arabic}}
    }
   }
