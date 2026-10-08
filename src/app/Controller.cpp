@@ -3,6 +3,7 @@
 #include "StoragePolicy.h"
 #include "MediaRead.h"
 #include "Recovery.h"
+#include "FilesystemRecovery.h"
 #include <QCoreApplication>
 #include <QTemporaryDir>
 #include <QUuid>
@@ -208,14 +209,19 @@ void Controller::scanSurface(const QString &device,bool acknowledged) {
  if(!acknowledged || !bytes){setResult(fail("Select an enumerated disk and acknowledge that a full read can stress failing media."));return;}
  start("surface_read",[this,device,bytes]{return dc::scanMedia(device,bytes,{&m_cancel,[this](qint64 n,qint64 total){QMetaObject::invokeMethod(this,[this,n,total]{m_progress=total?double(n)/double(total):0;emit stateChanged();},Qt::QueuedConnection);}});});
 }
-void Controller::rescueDisk(const QString &device,const QString &destination,bool acknowledged) {
+void Controller::rescueDisk(const QString &device,const QString &destination,bool acknowledged,bool resume,int sectorBytes,int retries) {
  if(m_busy)return;
  qint64 bytes=0;for(const auto &d:m_disks)if(d.toMap().value("device").toString()==device)bytes=d.toMap().value("bytes").toLongLong();
  if(!acknowledged || !bytes){setResult(fail("Select an enumerated disk and acknowledge rescue limitations."));return;}
- start("media_rescue",[this,device,bytes,destination]{return dc::rescueMedia(device,bytes,destination,{&m_cancel,[this](qint64 n,qint64 total){QMetaObject::invokeMethod(this,[this,n,total]{m_progress=total?double(n)/double(total):0;emit stateChanged();},Qt::QueuedConnection);}});});
+ start("media_rescue",[this,device,bytes,destination,resume,sectorBytes,retries]{return dc::rescueMedia(device,bytes,destination,{&m_cancel,[this](qint64 n,qint64 total){QMetaObject::invokeMethod(this,[this,n,total]{m_progress=total?double(n)/double(total):0;emit stateChanged();},Qt::QueuedConnection);}},{resume,sectorBytes,retries});});
 }
 
-void Controller::recoverImage(const QString &source,const QString &directory,bool fat32) {
+void Controller::recoverImage(const QString &source,const QString &directory,int mode,int maxFiles) {
  if(m_busy)return;
- start(fat32?"fat32_recovery":"file_recovery",[this,source,directory,fat32]{return (fat32?dc::recoverFat32:dc::recoverImage)(source,directory,{&m_cancel,[this](qint64 n,qint64 total){QMetaObject::invokeMethod(this,[this,n,total]{m_progress=total?double(n)/double(total):0;emit stateChanged();},Qt::QueuedConnection);}});});
+ if(mode<0||mode>3||maxFiles<1||maxFiles>1000000){setResult(fail("Invalid recovery settings"));return;}
+ start(mode?"filesystem_recovery":"file_recovery",[this,source,directory,mode,maxFiles]{
+  dc::Context ctx{&m_cancel,[this](qint64 n,qint64 total){QMetaObject::invokeMethod(this,[this,n,total]{m_progress=total?double(n)/double(total):0;emit stateChanged();},Qt::QueuedConnection);}};
+  if(!mode)return dc::recoverImage(source,directory,ctx);
+  return dc::recoverFilesystem(source,directory,mode==1?"FAT32":mode==2?"NTFS":"exFAT",ctx,{maxFiles,2000000});
+ });
 }

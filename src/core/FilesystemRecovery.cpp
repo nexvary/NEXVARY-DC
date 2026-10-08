@@ -12,6 +12,7 @@
 #include <QCryptographicHash>
 #include <QSet>
 #include <QMap>
+#include <QRegularExpression>
 #include <QtEndian>
 #include <limits>
 namespace dc {
@@ -20,7 +21,7 @@ quint16 u16(const QByteArray &b,int p){return qFromLittleEndian<quint16>(reinter
 quint32 u32(const QByteArray &b,int p){return qFromLittleEndian<quint32>(reinterpret_cast<const uchar*>(b.constData()+p));}
 quint64 u64(const QByteArray &b,int p){return qFromLittleEndian<quint64>(reinterpret_cast<const uchar*>(b.constData()+p));}
 QString utf16(const QByteArray &b,int p,int n){QString s;for(int i=0;i<n;++i)s+=QChar(u16(b,p+2*i));return s;}
-QString safe(QString s){for(auto &c:s)if(c.unicode()<32||QString("/\\:*?\"<>|").contains(c))c='_';while(s.endsWith('.')||s.endsWith(' '))s.chop(1);if(s.isEmpty()||s=="."||s=="..")s="unnamed";return "_"+s.left(180);}
+QString safe(QString s){for(auto &c:s)if(c.unicode()<32||QString("/\\:*?\"<>|").contains(c))c='_';while(s.endsWith('.')||s.endsWith(' '))s.chop(1);if(s.isEmpty()||s=="."||s=="..")s="unnamed";if(QRegularExpression("^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])($|\\.)",QRegularExpression::CaseInsensitiveOption).match(s).hasMatch())s="_"+s;return s.left(180);}
 struct Run {qint64 offset,length;}; // offset -1 means logical zeros, never missing evidence.
 struct Stream {QList<Run> runs; QByteArray resident; qint64 size=0,initialized=0;bool valid=false;};
 struct Image {
@@ -43,7 +44,7 @@ struct Output {
   if(!running())return;if(files.size()>=options.maxFiles){status="partial";issue(name,"Configured file limit reached");return;}
   if(!s.valid||s.size<0||s.size>im.v.length){issue(name,"Invalid or incomplete allocation metadata");return;}
   QStorageInfo space(root);space.refresh();if(!space.isValid()||space.isReadOnly()||space.bytesAvailable()<s.size+64*1024*1024){status="error";issue(name,"Insufficient destination space");return;}
-  const auto relative=folder+"/"+QString::number(files.size()+1)+safe(name);auto path=QDir(root).filePath(relative);
+  auto relative=folder+"/"+safe(name);auto path=QDir(root).filePath(relative);if(QFileInfo::exists(path)){relative=folder+"/"+QString::number(files.size()+1)+"_"+safe(name);path=QDir(root).filePath(relative);}
   if(!QDir().mkpath(QFileInfo(path).absolutePath())){status="error";issue(name,"Cannot create output directory");return;}
   QFile file(path);if(!file.open(QIODevice::WriteOnly|QIODevice::NewOnly)){status="error";issue(name,"Cannot create output file");return;}
   QCryptographicHash hash(QCryptographicHash::Sha256);qint64 done=0;QString condition=candidate?"candidate":"complete";

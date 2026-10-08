@@ -39,8 +39,8 @@ public:
  Q_INVOKABLE void refresh();
  Q_INVOKABLE void inspectHealth(const QString &device);
  Q_INVOKABLE void scanSurface(const QString &device,bool acknowledged);
- Q_INVOKABLE void rescueDisk(const QString &device,const QString &destination,bool acknowledged);
- Q_INVOKABLE void recoverImage(const QString &source,const QString &directory,bool fat32=false);
+ Q_INVOKABLE void rescueDisk(const QString &device,const QString &destination,bool acknowledged,bool resume=false,int sectorBytes=512,int retries=1);
+ Q_INVOKABLE void recoverImage(const QString &source,const QString &directory,int mode=0,int maxFiles=100000);
  Q_INVOKABLE void scanImage(const QString &path);
  Q_INVOKABLE void copyImage(const QString &source,const QString &destination);
  Q_INVOKABLE void testCapacity(const QString &directory,int mib,bool acknowledged);

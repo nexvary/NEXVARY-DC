@@ -19,7 +19,7 @@ private slots:
  }
  void rejectCorruptAndTruncated(){QTemporaryDir d;auto corrupt=png();corrupt[29]=char(corrupt[29]^1);write(d.filePath("bad.img"),corrupt+png().left(35)+QByteArray::fromHex("ffd8ffe00004abcd"));auto r=dc::recoverImage(d.filePath("bad.img"),d.path());QCOMPARE(r.value("recoveredCount").toInt(),0);}
  void preserveResultsOnCancel(){QTemporaryDir d;write(d.filePath("src.img"),png()+QByteArray(2*1048576,'x'));std::atomic_bool stop=false;auto r=dc::recoverImage(d.filePath("src.img"),d.path(),{&stop,[&](qint64,qint64){stop=true;}});QCOMPARE(r.value("status").toString(),"cancelled");QCOMPARE(r.value("recoveredCount").toInt(),1);QVERIFY(QFile::exists(QDir(r.value("destination").toString()).filePath("manifest.json")));}
- void fat32DeletedFileAndAllocatedRejection(){
+ void fat32DeletedFileAndRetainedChainCandidate(){
   QTemporaryDir d;const auto source=d.filePath("fat32.img");QFile f(source);QVERIFY(f.open(QIODevice::ReadWrite));
   constexpr int sectors=32+2*513+65525;QVERIFY(f.resize(qint64(sectors)*512));
   QByteArray boot(512,0);qToLittleEndian<quint16>(512,reinterpret_cast<uchar*>(boot.data()+11));boot[13]=1;qToLittleEndian<quint16>(32,reinterpret_cast<uchar*>(boot.data()+14));boot[16]=2;qToLittleEndian<quint32>(sectors,reinterpret_cast<uchar*>(boot.data()+32));qToLittleEndian<quint32>(513,reinterpret_cast<uchar*>(boot.data()+36));qToLittleEndian<quint32>(2,reinterpret_cast<uchar*>(boot.data()+44));boot[510]=char(0x55);boot[511]=char(0xaa);QCOMPARE(f.write(boot),qint64(512));
@@ -27,7 +27,7 @@ private slots:
   const qint64 data=(32+2*513)*512;QByteArray entry(512,0);entry[0]=char(0xe5);entry.replace(1,10,"ILE    TXT");entry[11]=char(0x20);qToLittleEndian<quint16>(3,reinterpret_cast<uchar*>(entry.data()+26));qToLittleEndian<quint32>(5,reinterpret_cast<uchar*>(entry.data()+28));QVERIFY(f.seek(data));QCOMPARE(f.write(entry),qint64(512));QCOMPARE(f.write("HELLO",5),qint64(5));f.flush();
   auto r=dc::recoverFat32(source,d.path());QCOMPARE(r.value("status").toString(),"completed");QCOMPARE(r.value("recoveredCount").toInt(),1);
   auto file=r.value("files").toArray()[0].toObject();QFile recovered(QDir(r.value("destination").toString()).filePath(file.value("file").toString()));QVERIFY(recovered.open(QIODevice::ReadOnly));QCOMPARE(recovered.readAll(),QByteArray("HELLO"));
-  QByteArray used(4,0);qToLittleEndian<quint32>(0x0fffffff,reinterpret_cast<uchar*>(used.data()));QVERIFY(f.seek(32*512+12));QCOMPARE(f.write(used),qint64(4));f.flush();r=dc::recoverFat32(source,d.path());QCOMPARE(r.value("recoveredCount").toInt(),0);QCOMPARE(r.value("skippedEntries").toInt(),1);
+  QByteArray used(4,0);qToLittleEndian<quint32>(0x0fffffff,reinterpret_cast<uchar*>(used.data()));QVERIFY(f.seek(32*512+12));QCOMPARE(f.write(used),qint64(4));f.flush();r=dc::recoverFat32(source,d.path());QCOMPARE(r.value("recoveredCount").toInt(),1);QCOMPARE(r.value("files").toArray()[0].toObject().value("condition").toString(),"candidate");
  }
  void fat32UnsupportedImage(){QTemporaryDir d;write(d.filePath("not-fat.img"),png());QCOMPARE(dc::recoverFat32(d.filePath("not-fat.img"),d.path()).value("status").toString(),"error");}
  void rejectDevicesAndMissingDestination(){QTemporaryDir d;QCOMPARE(dc::recoverImage("/dev/null",d.path()).value("status").toString(),"error");write(d.filePath("src.img"),png());QCOMPARE(dc::recoverImage(d.filePath("src.img"),d.filePath("missing")).value("status").toString(),"error");}
