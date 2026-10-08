@@ -1,4 +1,4 @@
-NEXVARY DISK CARE 0.5.0
+NEXVARY DISK CARE 0.5.1
 Storage diagnostics, metadata recovery and verified imaging
 
 INCLUDED FEATURES

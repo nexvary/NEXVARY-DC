@@ -9,7 +9,7 @@ Panel {
    ColumnLayout {Layout.fillWidth:true
     Label {text:"NEXVARY Disk Care";font.pixelSize:26;font.bold:true;color:"#eaf2fa"}
     Label {text:app.t("تشخيص وصيانة وإدارة وسائط التخزين","Storage diagnostics, maintenance and management");color:"#8fc9eb";Layout.fillWidth:true;wrapMode:Text.WordWrap}
-    Label {text:"0.5.0 · C++20 / Qt 6";color:"#9eb2c4"}
+    Label {text:"0.5.1 · C++20 / Qt 6";color:"#9eb2c4"}
    }
   }
   Rectangle {Layout.fillWidth:true;height:1;color:"#334c60"}

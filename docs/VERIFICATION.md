@@ -1,4 +1,4 @@
-# Verification — 0.5.0
+# Verification — 0.5.1
 
 Release publication is gated on Windows 2022 and Ubuntu 24.04 builds/tests for the **same commit**. `release-manifest.json` records its SHA and Actions run. A local source tree or a successful compile alone is not release evidence.
 
@@ -41,3 +41,5 @@ Hardware-only procedure: [HARDWARE-TESTS-AR.md](HARDWARE-TESTS-AR.md).
 GRUB repair supports plain ext4 root with /boot inside it and an intact grub.cfg. It does not support separate /boot, encrypted/LVM/RAID/Btrfs roots, BIOS/GPT, missing/corrupt menu configuration or Windows BCD rebuilding. No automatic raw-sector rollback is claimed; verified backups and failure reports are retained.
 
 Windows firmware-priority repair is limited to an existing GRUB/shim entry in the current firmware order. It preserves other entries and makes no partition writes. BCDEdit displayorder parsing must be recognized; otherwise it refuses safely. Parser/localization fixtures do not certify real device firmware writes.
+
+Windows visual proof uses the native Windows platform, not the font-less offscreen test platform. The screenshot command checks required Arabic/Latin glyph coverage before capturing. Offscreen startup tests are still lifecycle checks, not font-rendering evidence.

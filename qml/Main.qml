@@ -5,7 +5,7 @@ import QtQuick.Dialogs
 ApplicationWindow {
  id: root
  width:1280;height:850;minimumWidth:980;minimumHeight:700;visible:true
- title:"NEXVARY Disk Care · 0.5.0";color:"#080f17"
+ title:"NEXVARY Disk Care · 0.5.1";color:"#080f17"
  property bool arabic:true
  property int page:0
  property bool bootRepairMode:false
@@ -84,7 +84,7 @@ ApplicationWindow {
     Item {Layout.fillHeight:true}
     ActionButton {visible:backend.windows&&!backend.administrator;Layout.fillWidth:true;implicitHeight:34;text:root.t("تشغيل كمسؤول","Run as administrator");enabled:!backend.busy;onClicked:if(!backend.relaunchAdministrator())root.notice=root.t("لم تُمنح صلاحيات المسؤول؛ لم يبدأ أي إجراء","Administrator permission was not granted; no operation started")}
     Label {visible:!backend.windows||backend.administrator;text:backend.administrator?root.t("صلاحيات مسؤول","Administrator"):root.t("وضع المستخدم","User mode");color:backend.administrator?"#efbf78":"#74c7a7";font.pixelSize:11}
-    RowLayout {Label {text:"0.5.0";color:"#7999b0"}Item {Layout.fillWidth:true}ActionButton {text:root.arabic?"English":"العربية";implicitWidth:102;implicitHeight:34;onClicked:root.arabic=!root.arabic}}
+    RowLayout {Label {text:"0.5.1";color:"#7999b0"}Item {Layout.fillWidth:true}ActionButton {text:root.arabic?"English":"العربية";implicitWidth:102;implicitHeight:34;onClicked:root.arabic=!root.arabic}}
    }
   }
   ColumnLayout {Layout.fillWidth:true;Layout.fillHeight:true;Layout.margins:20;spacing:12

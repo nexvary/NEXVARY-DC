@@ -1,5 +1,6 @@
 #include <QGuiApplication>
 #include <QIcon>
+#include <QFontMetrics>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickWindow>
@@ -20,7 +21,7 @@ int main(int argc,char **argv) {
  QQuickStyle::setStyle("Basic");
  QGuiApplication app(argc,argv);
  app.setWindowIcon(QIcon(":/assets/icons/brand.png"));
- app.setOrganizationName("NEXVARY");app.setApplicationName("Disk Care");app.setApplicationVersion("0.5.0");
+ app.setOrganizationName("NEXVARY");app.setApplicationName("Disk Care");app.setApplicationVersion("0.5.1");
  const auto args=app.arguments();
  const bool smoke=args.contains("--smoke-test");
  if(smoke) QStandardPaths::setTestModeEnabled(true);
@@ -32,6 +33,10 @@ int main(int argc,char **argv) {
  engine.loadFromModule("Nexvary.DC","Main");
  if(engine.rootObjects().isEmpty())return 1;
  auto *root=engine.rootObjects().first();
+ if(args.contains("--font-proof")) {
+  const QFontMetrics metrics(root->property("font").value<QFont>());
+  for(char32_t c:U"A9\u0627\u0644\u0639\u0631\u0628\u064a\u0629")if(c && !metrics.inFontUcs4(c)){std::fprintf(stderr,"Missing UI glyph U+%04X\n",unsigned(c));return 4;}
+ }
  if(args.contains("--english"))root->setProperty("arabic",false);
  if(args.contains("--boot-repair"))root->setProperty("bootRepairMode",true);
  const int page=args.indexOf("--page");
