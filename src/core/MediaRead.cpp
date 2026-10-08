@@ -1,5 +1,6 @@
 #include "MediaRead.h"
 #include <QFile>
+#include <QDateTime>
 #include <QFileInfo>
 #include <QDir>
 #include <QStorageInfo>
@@ -36,6 +37,23 @@ public:
  file.setFileName(path);return file.open(QIODevice::ReadOnly);
 #endif
  }
+ QString identity(qint64 expected){
+  if(file.isOpen()&&isRegularSource(file.fileName())){
+   QFileInfo info(file);if(file.size()!=expected)return {};QCryptographicHash hash(QCryptographicHash::Sha256);
+   for(qint64 pos:QList<qint64>{0,qMax<qint64>(0,expected/2-512),qMax<qint64>(0,expected-1024)}){if(!file.seek(pos))return {};hash.addData(file.read(qMin<qint64>(1024,expected-pos)));}
+   return info.canonicalFilePath()+":"+QString::number(expected)+":"+QString::number(info.lastModified().toMSecsSinceEpoch())+":"+QString::fromLatin1(hash.result().toHex());
+  }
+#ifdef Q_OS_WIN
+  GET_LENGTH_INFORMATION length{};DWORD got=0;if(!DeviceIoControl(handle,IOCTL_DISK_GET_LENGTH_INFO,nullptr,0,&length,sizeof(length),&got,nullptr)||length.Length.QuadPart!=expected)return {};
+  STORAGE_PROPERTY_QUERY query{};query.PropertyId=StorageDeviceProperty;query.QueryType=PropertyStandardQuery;QByteArray data(16384,0);
+  if(!DeviceIoControl(handle,IOCTL_STORAGE_QUERY_PROPERTY,&query,sizeof(query),data.data(),DWORD(data.size()),&got,nullptr)||got<sizeof(STORAGE_DEVICE_DESCRIPTOR))return {};
+  auto *d=reinterpret_cast<const STORAGE_DEVICE_DESCRIPTOR*>(data.constData());if(!d->SerialNumberOffset||d->SerialNumberOffset>=got)return {};
+  auto serial=data.mid(d->SerialNumberOffset,got-d->SerialNumberOffset);int end=serial.indexOf(char(0));if(end<0)return {};serial.truncate(end);serial=serial.trimmed();if(serial.isEmpty())return {};
+  return QString::fromLatin1(serial)+":"+QString::number(expected);
+#else
+  return {};
+#endif
+ }
  qint64 read(qint64 offset,char *data,qint64 count){
  if(file.isOpen()){if(!file.seek(offset))return -1;return file.read(data,count);}
 #ifdef Q_OS_WIN
@@ -46,8 +64,8 @@ public:
 #endif
  }
 };
-bool outputIsSeparate(const QString &source,const QString &dest){
- auto info=QFileInfo(dest);if(info.exists() || info.isSymLink() || !QFileInfo(info.absolutePath()).isDir())return false;
+bool outputIsSeparate(const QString &source,const QString &dest,bool resume=false){
+ auto info=QFileInfo(dest);if((info.exists()&&!resume) || info.isSymLink() || !QFileInfo(info.absolutePath()).isDir())return false;
 #ifdef Q_OS_WIN
  wchar_t volume[MAX_PATH];const auto folder=QDir::toNativeSeparators(info.absolutePath());
  if(!GetVolumePathNameW(reinterpret_cast<LPCWSTR>(folder.utf16()),volume,MAX_PATH))return false;
@@ -103,5 +121,12 @@ QJsonObject perform(const QString &device,qint64 bytes,const QString &dest,const
 }
 }
 QJsonObject scanMedia(const QString &device,qint64 bytes,const Context &context){return perform(device,bytes,{},context);}
-QJsonObject rescueMedia(const QString &device,qint64 bytes,const QString &dest,const Context &context){return perform(device,bytes,dest,context);}
+QJsonObject rescueMedia(const QString &device,qint64 bytes,const QString &dest,const Context &context,const RescueOptions &options){
+ if(!isRegularSource(device)&&!outputIsSeparate(device,dest,options.resume))return fail("Destination disk separation could not be verified.");
+ if(QFileInfo(device).canonicalFilePath()==QFileInfo(dest).canonicalFilePath()&&QFileInfo(dest).exists())return fail("Source and destination must differ.");
+ Reader reader;if(!reader.open(device))return fail("Cannot open source read-only.");
+ QString identity=reader.identity(bytes);if(identity.isEmpty())return fail("Cannot verify source identity and actual length.");
+ RescueSource source{bytes,identity,[&](qint64 offset,qint64 count){QByteArray b(count,0);auto n=reader.read(offset,b.data(),count);if(n!=count)return QByteArray{};return b;}};
+ return rescueStream(source,dest,options,context);
+}
 }
