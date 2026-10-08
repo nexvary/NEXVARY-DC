@@ -43,7 +43,7 @@ class RepairTests(unittest.TestCase):
     def test_stale_identity_and_wrong_confirmation(self):
         fresh = {'token': 'current', 'created': repair.time.time(), 'disk': {'path': '/dev/test'},
                  'root': '/mount', 'esp': '', 'mode': 'bios', 'backup': '/backup'}
-        with patch.object(repair.os, 'geteuid', return_value=0), patch.object(repair, 'plan', return_value=fresh), patch.object(repair, 'snapshot') as copy:
+        with patch.object(repair.os, 'geteuid', return_value=0, create=True), patch.object(repair, 'plan', return_value=fresh), patch.object(repair, 'snapshot') as copy:
             stale = {**fresh, 'token': 'old'}
             with self.assertRaises(ValueError):
                 repair.apply(stale, 'REPAIR /dev/test')
@@ -54,7 +54,7 @@ class RepairTests(unittest.TestCase):
             copy.assert_not_called()
 
     def test_privilege_and_path_guard(self):
-        with patch.object(repair.os, 'geteuid', return_value=1000):
+        with patch.object(repair.os, 'geteuid', return_value=1000, create=True):
             with self.assertRaises(ValueError):
                 repair.apply({}, '')
         with tempfile.TemporaryDirectory() as d:

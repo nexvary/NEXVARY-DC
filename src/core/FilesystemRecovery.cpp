@@ -77,10 +77,10 @@ QList<QByteArray> attributes(const QByteArray &r,bool &ok){
  QList<QByteArray> out;ok=false;if(r.size()<48)return out;quint32 used=u32(r,24);int p=u16(r,20);if(used>quint32(r.size())||p<48||p%8)return out;
  while(quint64(p)+4<=used){if(u32(r,p)==0xffffffff){ok=true;break;}if(quint64(p)+24>used)break;auto n=u32(r,p+4);if(n<24||n%8||n>used-quint32(p))break;out<<r.mid(p,n);p+=int(n);}return out;
 }
-Stream ntStream(const QByteArray &a,qint64 cluster,qint64 volume){
+Stream ntStream(const QByteArray &a,qint64 cluster,qint64 volume,bool extent=false){
  Stream s;if(a.size()<24)return s;
  if(uchar(a[8])==0){auto n=u32(a,16);int p=u16(a,20);if(p<24||quint64(p)+n>quint64(a.size()))return s;s.resident=a.mid(p,n);if(n==0)s.resident=QByteArray("");s.size=s.initialized=n;s.valid=true;return s;}
- if(uchar(a[8])!=1||a.size()<64||u64(a,16)!=0||(u16(a,12)&0x40ff))return s; // compressed/encrypted require a decoder
+ if(uchar(a[8])!=1||a.size()<64||(!extent&&u64(a,16)!=0)||(u16(a,12)&0x40ff))return s; // compressed/encrypted require a decoder
  auto size=u64(a,48),initialized=u64(a,56),highest=u64(a,24);int p=u16(a,32);if(size>quint64(volume)||initialized>size||p<64||p>=a.size())return s;
  qint64 lcn=0,total=0;bool terminated=false;
  while(p<a.size()){
@@ -92,7 +92,7 @@ Stream ntStream(const QByteArray &a,qint64 cluster,qint64 volume){
    if(lcn<0||lcn>volume/cluster||count>quint64(volume/cluster-lcn))return {};}
   s.runs.append({os?lcn*cluster:-1,qint64(count)*cluster});total+=qint64(count)*cluster;
  }
- if(!terminated||total<qint64(size)||highest!=quint64(total/cluster-1))return {};
+ auto lowest=u64(a,16);if(lowest>quint64(volume/cluster)||!terminated||(!extent&&total<qint64(size))||!total||highest!=lowest+quint64(total/cluster)-1)return {};
  s.size=qint64(size);s.initialized=qint64(initialized);s.valid=true;return s;
 }
 struct NtName {QString name;quint64 parent=0;quint16 parentSequence=0,sequence=0;bool dir=false,live=false;};
@@ -106,6 +106,32 @@ bool ntfs(Image &im,Output &out){
  if(ok)for(const auto &a:attrs){if(u32(a,0)==0x20){out.issue("$MFT","MFT attribute-list extensions unsupported");return true;}if(u32(a,0)==0x80&&a[9]==0)mft=ntStream(a,cluster,im.v.length);}
  if(!mft.valid||mft.initialized!=mft.size||mft.size%record){out.issue("$MFT","Missing or invalid data runlist");return true;}
  auto get=[&](quint64 id){auto r=im.read(mft,qint64(id)*record,record);if(!fixup(r,sector))r.clear();return r;};
+ auto dataStream=[&](quint64 id,const QByteArray &base,const QList<QByteArray> &baseAttrs){
+  QList<QByteArray> parts;QByteArray list;bool hasList=false;
+  for(const auto &a:baseAttrs){if(u32(a,0)==0x80&&a[9]==0)parts.append(a);if(u32(a,0)==0x20){if(hasList)return Stream{};hasList=true;auto s=ntStream(a,cluster,im.v.length);if(!s.valid||s.size>1048576||s.initialized!=s.size)return Stream{};list=im.read(s,0,s.size);if(list.size()!=s.size)return Stream{};}}
+  if(hasList){QSet<QString> refs;QList<QByteArray> listed;
+   for(int pos=0;pos<list.size();){if(list.size()-pos<26)return Stream{};auto len=u16(list,pos+4);int names=uchar(list[pos+6]),nameOffset=uchar(list[pos+7]);if(len<26||len>list.size()-pos||(names&&(nameOffset<26||nameOffset+names*2>len)))return Stream{};
+    if(u32(list,pos)==0x80&&!names){auto vcn=u64(list,pos+8),ref=u64(list,pos+16);quint64 owner=ref&0x0000ffffffffffffULL;quint16 sequence=ref>>48,attributeId=u16(list,pos+24);QString key=QString::number(owner)+":"+QString::number(attributeId);if(refs.contains(key)||refs.size()>=65536||owner>=quint64(mft.size/record))return Stream{};refs.insert(key);
+     auto r=owner==id?base:get(owner);if(r.isEmpty()||u16(r,16)!=sequence||bool(u16(r,22)&1)!=bool(u16(base,22)&1))return Stream{};
+     if(owner!=id){auto parent=u64(r,32);if((parent&0x0000ffffffffffffULL)!=id||(parent>>48)!=u16(base,16))return Stream{};}
+     bool valid=false;auto as=attributes(r,valid);if(!valid)return Stream{};QByteArray found;
+     for(const auto &a:as)if(u32(a,0)==0x80&&a[9]==0&&u16(a,14)==attributeId){if(!found.isEmpty())return Stream{};found=a;}
+     if(found.isEmpty()||(found[8]==0?vcn!=0:found.size()<64||u64(found,16)!=vcn))return Stream{};listed.append(found);
+    }pos+=len;
+   }
+   // Every base DATA extent must also be listed. Otherwise the evidence is
+   // inconsistent and must not silently drop a local extent.
+   for(const auto &a:parts){bool found=false;for(const auto &b:listed)if(a==b)found=true;if(!found)return Stream{};}parts=listed;
+  }
+  if(parts.isEmpty())return Stream{};if(parts.size()==1&&parts[0][8]==0)return ntStream(parts[0],cluster,im.v.length);
+  for(const auto &a:parts)if(a.size()<64||a[8]!=1)return Stream{};
+  std::sort(parts.begin(),parts.end(),[](const QByteArray &a,const QByteArray &b){return u64(a,16)<u64(b,16);});
+  Stream joined;quint64 vcn=0;qint64 total=0;
+  for(const auto &a:parts){if(u64(a,16)!=vcn)return Stream{};auto s=ntStream(a,cluster,im.v.length,true);if(!s.valid)return Stream{};if(!vcn){joined.size=s.size;joined.initialized=s.initialized;}
+   for(const auto &run:s.runs){if(total>im.v.length-run.length||joined.runs.size()>=65536)return Stream{};joined.runs.append(run);total+=run.length;vcn+=quint64(run.length/cluster);}
+  }
+  if(total<joined.size)return Stream{};joined.valid=true;return joined;
+ };
  Stream bitmap;auto br=get(6);if(!br.isEmpty()){auto ba=attributes(br,ok);if(ok)for(const auto &a:ba)if(u32(a,0)==0x80&&a[9]==0)bitmap=ntStream(a,cluster,im.v.length);}
  const auto count=qMin<qint64>(mft.size/record,out.options.maxRecords);if(count<mft.size/record){out.status="partial";out.issue("$MFT","Configured MFT record limit reached");return true;}
  QMap<quint64,NtName> names;
@@ -115,9 +141,9 @@ bool ntfs(Image &im,Output &out){
   if(!name.name.isEmpty())names.insert(i,name);out.ctx.update(i,count*2);
  }
  for(auto it=names.cbegin();it!=names.cend()&&out.running();++it){const auto &name=it.value();if(name.live||name.dir||it.key()<16)continue;
-  auto r=get(it.key());auto as=attributes(r,ok);if(!ok){out.issue(name.name,"Record changed during scan");continue;}Stream data;bool extended=false;
-  for(const auto &a:as){if(u32(a,0)==0x20)extended=true;if(u32(a,0)==0x80&&a[9]==0)data=ntStream(a,cluster,im.v.length);}
-  if(extended||!data.valid){out.issue(name.name,"Attribute-list extension, compression, encryption or invalid/missing data runs");continue;}
+  auto r=get(it.key());auto as=attributes(r,ok);if(!ok){out.issue(name.name,"Record changed during scan");continue;}Stream data;
+  data=dataStream(it.key(),r,as);
+  if(!data.valid){out.issue(name.name,"Invalid attribute-list references, compression, encryption or invalid/missing data runs");continue;}
   bool free=true;if(data.resident.isNull()){
    if(!bitmap.valid||bitmap.initialized!=bitmap.size){out.issue(name.name,"Allocation bitmap unavailable");continue;}
    for(const auto &run:data.runs){if(run.offset<0)continue;quint64 c=run.offset/cluster,n=run.length/cluster;
@@ -254,7 +280,7 @@ QJsonObject recoverFilesystem(const QString &source,const QString &directory,con
  }
  if(!found)status="error";if(ctx.cancelled())status="cancelled";if(f.size()!=size||QFileInfo(source).lastModified()!=modified){status="error";warnings<<"Source changed while recovering";}
  if(status=="completed"&&skipped)status="partial";
- QJsonObject result{{"status",status},{"operation","filesystem_recovery"},{"filesystem",filesystem},{"destination",directoryOut.path()},{"source",QFileInfo(source).absoluteFilePath()},{"recoveredCount",files.size()},{"files",files},{"skippedEntries",skipped},{"issues",issues},{"warnings",QJsonArray::fromStringList(warnings)},{"matchedVolumes",found},{"scope","Read-only deleted-file recovery. complete means metadata byte coverage, not original-content authenticity. Overwritten/TRIM data cannot be recreated. Compressed/encrypted NTFS and attribute-list extensions are reported, not guessed."}};
+ QJsonObject result{{"status",status},{"operation","filesystem_recovery"},{"filesystem",filesystem},{"destination",directoryOut.path()},{"source",QFileInfo(source).absoluteFilePath()},{"recoveredCount",files.size()},{"files",files},{"skippedEntries",skipped},{"issues",issues},{"warnings",QJsonArray::fromStringList(warnings)},{"matchedVolumes",found},{"scope","Read-only deleted-file recovery. complete means metadata byte coverage, not original-content authenticity. Overwritten/TRIM data cannot be recreated. Compressed/encrypted NTFS and external MFT attribute-list extensions are reported, not guessed."}};
  int completeCount=0,partialCount=0,candidateCount=0;for(const auto &value:files){auto condition=value.toObject().value("condition").toString();if(condition=="complete")++completeCount;else if(condition=="partial")++partialCount;else ++candidateCount;}result.insert("completeCount",completeCount);result.insert("partialCount",partialCount);result.insert("candidateCount",candidateCount);
  QSaveFile manifest(directoryOut.filePath("manifest.json"));auto json=QJsonDocument(result).toJson();if(!manifest.open(QIODevice::WriteOnly)||manifest.write(json)!=json.size()||!manifest.commit())result.insert("manifestWarning","Cannot save manifest; export report.");return result;
 }

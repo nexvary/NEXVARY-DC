@@ -48,6 +48,14 @@ class AdvancedTests:public QObject {
  QByteArray read(const QString &p){QFile f(p);if(!f.open(QIODevice::ReadOnly))return {};return f.readAll();}
  void compareFile(const QJsonObject &r,int i,const QByteArray &expected){auto entry=r.value("files").toArray()[i].toObject();auto b=read(QDir(r.value("destination").toString()).filePath(entry.value("file").toString()));QCOMPARE(b,expected);QCOMPARE(entry.value("sha256").toString(),QString::fromLatin1(QCryptographicHash::hash(expected,QCryptographicHash::Sha256).toHex()));QVERIFY(entry.value("readbackVerified").toBool());}
 private slots:
+ void ntfsAttributeListFragmentsAndStaleReference(){QTemporaryDir d;auto b=ntImage();QByteArray list(64,0);
+  for(int p:QList<int>{0,32}){p32(list,p,0x80);p16(list,p+4,32);p64(list,p+16,quint64(p?19:18)|(quint64(1)<<48));p16(list,p+24,p?9:8);}p64(list,40,1);
+  auto base=nonresident(QByteArray::fromHex("11015000"),1200,1);p16(base,14,8);auto extra=nonresident(QByteArray::fromHex("11025a00"),0,2);p16(extra,14,9);p64(extra,16,1);p64(extra,24,2);
+  b.replace(2048+18*1024,1024,record(18,false,false,"extended.bin",16,base+resident(0x20,list)));auto ext=record(19,false,false,"extension",16,extra);p64(ext,32,quint64(18)|(quint64(1)<<48));b.replace(2048+19*1024,1024,ext);
+  write(d.filePath("n.img"),b);auto r=dc::recoverFilesystem(d.filePath("n.img"),d.path(),"NTFS");QCOMPARE(r.value("recoveredCount").toInt(),2);compareFile(r,1,QByteArray(512,'A')+QByteArray(688,'B'));
+  p16(b,2048+19*1024+16,2);write(d.filePath("n.img"),b);r=dc::recoverFilesystem(d.filePath("n.img"),d.path(),"NTFS");QCOMPARE(r.value("recoveredCount").toInt(),1);QVERIFY(r.value("skippedEntries").toInt()>0);
+  p16(b,2048+19*1024+16,1);p64(b,2048+19*1024+32,quint64(17)|(quint64(1)<<48));write(d.filePath("n.img"),b);r=dc::recoverFilesystem(d.filePath("n.img"),d.path(),"NTFS");QCOMPARE(r.value("recoveredCount").toInt(),1);
+ }
  void gpt4KnAndBackup(){QTemporaryDir d;auto volume=exImage();QByteArray b(4096*64,0);b.replace(8*4096,volume.size(),volume);b[510]=85;b[511]=char(170);b[450]=char(0xee);p32(b,454,1);p32(b,458,63);
   auto crc=[](const QByteArray &x){quint32 c=~0u;for(uchar ch:x){c^=ch;for(int j=0;j<8;++j)c=(c>>1)^(0xedb88320u&(0u-(c&1)));}return ~c;};
   QByteArray table(512,0);table[0]=1;p64(table,32,8);p64(table,40,23);b.replace(2*4096,512,table);b.replace(62*4096,512,table);

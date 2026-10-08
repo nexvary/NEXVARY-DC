@@ -40,7 +40,11 @@ def binary(path):
 
 for tool in ['python3', 'lsblk', 'findmnt', 'efibootmgr', 'grub-install', 'grub-script-check',
              'grub-mkimage', 'grub-probe', 'grub-bios-setup', 'grub-editenv', 'grub-mkrelpath', 'modprobe']:
-    binary(shutil.which(tool))
+    executable = shutil.which(tool)
+    if not executable and tool == 'grub-bios-setup':
+        executable = '/usr/lib/grub/i386-pc/grub-bios-setup'
+    assert executable, 'Missing tool: ' + tool
+    binary(executable)
 shutil.copytree('/usr/lib/python3.12', ram / 'usr/lib/python3.12', dirs_exist_ok=True)
 for extension in (ram / 'usr/lib/python3.12').rglob('*.so'):
     result = subprocess.run(['ldd', str(extension)], capture_output=True, text=True)

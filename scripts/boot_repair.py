@@ -186,7 +186,7 @@ def snapshot(root, esp, destination):
         target = destination / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, target)
-        with open(target, 'rb') as f:
+        with open(target, 'r+b') as f:
             os.fsync(f.fileno())
         digest = sha(source)
         if sha(target) != digest:
@@ -196,7 +196,7 @@ def snapshot(root, esp, destination):
 
 
 def apply(request, confirmation):
-    if os.geteuid() != 0:
+    if getattr(os, 'geteuid', lambda: -1)() != 0:
         raise ValueError('Repair requires root in a live Linux session.')
     fresh = plan(request['root'], request['esp'], request['disk']['path'], request['mode'], request['backup'])
     if fresh['token'] != request['token'] or time.time() - request['created'] > 180:
