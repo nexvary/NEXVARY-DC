@@ -100,11 +100,37 @@ if($Mode -ne 'bios'){
  Copy-Item $template $vars
  $arguments+=@('-global','driver=cfi.pflash01,property=secure,value=on','-drive',"if=pflash,format=raw,readonly=on,file=$code",'-drive',"if=pflash,format=raw,file=$vars")
 }
+function Capture([string]$phase){
+ $client=[Net.Sockets.TcpClient]::new()
+ try {
+  $client.Connect('127.0.0.1',45454)
+  $stream=$client.GetStream();$stream.ReadTimeout=5000
+  $reader=[IO.StreamReader]::new($stream)
+  $writer=[IO.StreamWriter]::new($stream);$writer.AutoFlush=$true
+  $null=$reader.ReadLine()
+  $writer.WriteLine('{"execute":"qmp_capabilities"}')
+  do {$reply=$reader.ReadLine()} while($reply -and $reply -notmatch '"return"|"error"')
+  $writer.WriteLine((@{execute='screendump';arguments=@{filename=(Join-Path $out ($phase+'.ppm'))}} | ConvertTo-Json -Compress))
+  do {$reply=$reader.ReadLine()} while($reply -and $reply -notmatch '"return"|"error"')
+ }catch{Write-Warning ('VM screenshot: '+$_.Exception.Message)}finally{$client.Dispose()}
+}
+function Wait-Guest($process,[int]$minutes,[string]$phase){
+ $deadline=(Get-Date).AddMinutes($minutes);$next=(Get-Date).AddSeconds(30)
+ while(!$process.HasExited -and (Get-Date) -lt $deadline){
+  Start-Sleep -Seconds 5;$process.Refresh()
+  if(!$process.HasExited -and (Get-Date) -ge $next){
+   Capture $phase
+   Write-Host ('VM phase='+$phase+' elapsed; current serial proof:')
+   Get-Content (Join-Path $out $(if($phase -eq 'installed'){'serial.txt'}else{'usb-serial.txt'})) -Tail 20 -ErrorAction SilentlyContinue | Write-Host
+   $next=(Get-Date).AddMinutes(1)
+  }
+ }
+ if(!$process.HasExited){Capture $phase;$process.Kill();$process.WaitForExit();throw ($phase+' Windows VM boot timeout')}
+}
+$arguments+=@('-qmp','tcp:127.0.0.1:45454,server=on,wait=off')
 $p=Start-Process $qemu -ArgumentList $arguments -PassThru -RedirectStandardError (Join-Path $out 'qemu.log')
 try {
- $deadline=(Get-Date).AddMinutes(45)
- while(!$p.HasExited -and (Get-Date) -lt $deadline){Start-Sleep -Seconds 5;$p.Refresh()}
- if(!$p.HasExited){$p.Kill();throw 'Installed Windows VM boot timeout'}
+ Wait-Guest $p 45 'installed'
  $text=Get-Content $serial -Raw
  if($text -notmatch 'DC_INSTALLED_WINDOWS_BOOT_OK'){throw 'No installed Windows first-logon proof'}
  foreach($marker in @('DC_SYSTEM_DISK_REFUSED','DC_USB_IDENTITY_REFUSED','DC_USB_SPACE_REFUSED','DC_USB_PREPARED=','DC_USB_TEST_HOOK_READY')){if($text -notmatch $marker){throw "Missing production USB fixture proof: $marker"}}
@@ -117,10 +143,9 @@ try {
   Copy-Item $template $vars -Force
   $peArgs+=@('-global','driver=cfi.pflash01,property=secure,value=on','-drive',"if=pflash,format=raw,readonly=on,file=$code",'-drive',"if=pflash,format=raw,file=$vars")
  }
+ $peArgs+=@('-qmp','tcp:127.0.0.1:45454,server=on,wait=off')
  $p=Start-Process $qemu -ArgumentList $peArgs -PassThru -RedirectStandardError (Join-Path $out 'usb-qemu.log')
- $deadline=(Get-Date).AddMinutes(20)
- while(!$p.HasExited -and (Get-Date) -lt $deadline){Start-Sleep -Seconds 5;$p.Refresh()}
- if(!$p.HasExited){$p.Kill();throw 'Prepared virtual USB boot timeout'}
+ Wait-Guest $p 20 'usb'
  $pe=Get-Content $peSerial -Raw
  if($pe -notmatch 'DC_WINDOWS_USB_WINPE_OK'){throw 'Prepared production USB did not reach Windows PE'}
  if($Mode -eq 'secureboot' -and $pe -notmatch 'DC_USB_SECURE_BOOT_ON'){throw 'Prepared USB guest did not confirm Secure Boot'}
@@ -130,7 +155,7 @@ try {
 }finally{
  if(!$p.HasExited){$p.Kill()}
  New-Item -ItemType Directory -Force "out/windows-vm-$Mode" | Out-Null
- Copy-Item "$out/*.log","$out/*.txt","$out/*.json" "out/windows-vm-$Mode" -ErrorAction SilentlyContinue
+ Copy-Item "$out/*.log","$out/*.txt","$out/*.json","$out/*.ppm" "out/windows-vm-$Mode" -ErrorAction SilentlyContinue
  # Do not redistribute Microsoft's evaluation ISO or Windows virtual disk.
  Remove-Item $vhd,$iso,$usb,$smallUSB -Force -ErrorAction SilentlyContinue
 }

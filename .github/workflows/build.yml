@@ -229,6 +229,22 @@ jobs:
           path: out/portable/
           if-no-files-found: error
 
+  firmware:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Install test firmware
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ovmf
+      - name: Retain OVMF test firmware
+        run: |
+          mkdir -p out/firmware
+          cp /usr/share/OVMF/OVMF_CODE_4M.secboot.fd /usr/share/OVMF/OVMF_VARS_4M.ms.fd /usr/share/OVMF/OVMF_VARS_4M.fd out/firmware/
+          cp /usr/share/doc/ovmf/copyright out/firmware/LICENSE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OVMF-test-firmware
+          path: out/firmware/
+
   linux-vm:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
@@ -240,15 +256,6 @@ jobs:
           dc_kernel_package=$(apt-cache depends linux-image-generic | awk '/Depends: linux-image-[0-9]/{print $2; exit}')
           test -n "$dc_kernel_package"
           sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils ovmf tesseract-ocr grub-pc-bin grub-efi-amd64-bin grub2-common efibootmgr busybox-static "$dc_kernel_package" "${dc_kernel_package/linux-image-/linux-modules-extra-}" cpio dosfstools parted zstd
-      - name: Retain OVMF test firmware
-        run: |
-          mkdir -p out/firmware
-          cp /usr/share/OVMF/OVMF_CODE_4M.secboot.fd /usr/share/OVMF/OVMF_VARS_4M.ms.fd /usr/share/OVMF/OVMF_VARS_4M.fd out/firmware/
-          cp /usr/share/doc/ovmf/copyright out/firmware/LICENSE
-      - uses: actions/upload-artifact@v4
-        with:
-          name: OVMF-test-firmware
-          path: out/firmware/
       - name: Boot reference hybrid Linux in BIOS and UEFI
         run: python3 tests/vm/boot_linux.py
       - name: Repair GRUB and boot the repaired disk in BIOS and UEFI
@@ -291,8 +298,7 @@ jobs:
           if-no-files-found: warn
 
   windows-vm:
-    if: ${{ always() && needs.linux-vm.result != 'cancelled' }}
-    needs: linux-vm
+    needs: firmware
     runs-on: windows-2022
     timeout-minutes: 100
     strategy:
@@ -318,7 +324,7 @@ jobs:
           $mode='${{ matrix.mode }}'
           $source=Join-Path $env:RUNNER_TEMP ('dc-windows-'+$mode)
           New-Item -ItemType Directory -Force "out/windows-vm-$mode" | Out-Null
-          if(Test-Path $source){Copy-Item "$source/*.log","$source/*.txt","$source/*.json" "out/windows-vm-$mode" -ErrorAction SilentlyContinue}
+          if(Test-Path $source){Copy-Item "$source/*.log","$source/*.txt","$source/*.json","$source/*.ppm" "out/windows-vm-$mode" -ErrorAction SilentlyContinue}
       - name: Retain Windows VM proof without Microsoft images
         if: always()
         uses: actions/upload-artifact@v4
