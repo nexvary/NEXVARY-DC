@@ -11,11 +11,13 @@ spec.loader.exec_module(repair)
 
 class RepairTests(unittest.TestCase):
     def test_running_system_device_mapper_parent_protection(self):
-        nodes = {'/dev/dm-0': {'pkname': '/dev/sda2'}, '/dev/sda2': {'pkname': '/dev/sda'}}
-        self.assertTrue(repair.on_disk('/dev/dm-0', '/dev/sda', nodes))
-        self.assertFalse(repair.on_disk('/dev/dm-0', '/dev/sdb', nodes))
-        nodes['/dev/sda'] = {'pkname': '/dev/dm-0'}
-        self.assertFalse(repair.on_disk('/dev/dm-0', '/dev/sdb', nodes))
+        with patch.object(repair.os.path, 'realpath', side_effect=lambda value: value):
+            nodes = {'/dev/dm-0': {'pkname': '/dev/sda2'}, '/dev/sda2': {'pkname': '/dev/sda'}}
+            self.assertTrue(repair.on_disk('/dev/dm-0', '/dev/sda', nodes))
+            self.assertFalse(repair.on_disk('/dev/dm-0', '/dev/sdb', nodes))
+            nodes['/dev/sda'] = {'pkname': '/dev/dm-0'}
+            self.assertFalse(repair.on_disk('/dev/dm-0', '/dev/sdb', nodes))
+
     def test_firmware_order(self):
         self.assertEqual(repair.firmware_order('BootCurrent: 0001\nBootOrder: 0002,0001\n'), ['0002', '0001'])
         with self.assertRaises(ValueError):

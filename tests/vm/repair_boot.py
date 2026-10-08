@@ -63,8 +63,18 @@ for module in ['virtio_pci', 'virtio_blk', 'ext4', 'vfat', 'efivarfs', 'nls_cp43
     deps = call(['modprobe', '--set-version', version, '--show-depends', module])
     for line in deps.splitlines():
         if line.startswith('insmod '):
-            path = pathlib.Path(line.split()[1]); target = ram / str(path).lstrip('/')
-            target.parent.mkdir(parents=True, exist_ok=True); shutil.copyfile(path, target)
+            path = pathlib.Path(line.split()[1])
+            relative = pathlib.Path(*path.parts[path.parts.index(version)+1:])
+            target = modules / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if target.suffix == '.zst':
+                target = target.with_suffix('')
+                with target.open('wb') as stream:
+                    subprocess.run(['zstd', '-d', '-c', str(path)], stdout=stream, check=True)
+            else:
+                shutil.copyfile(path, target)
+            assert target.read_bytes()[:4] == b'\x7fELF', 'Invalid kernel module: ' + str(target)
+call(['depmod', '--basedir', ram, version])
 for name in ['bin', 'dev', 'proc', 'sys', 'tmp', 'run', 'mnt/linux', 'mnt/esp', 'backup', 'etc']:
     (ram / name).mkdir(parents=True, exist_ok=True)
 shutil.copyfile('/bin/busybox', ram / 'bin/busybox')

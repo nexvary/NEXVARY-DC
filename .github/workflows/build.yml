@@ -198,7 +198,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install virtual firmware test tools
-        run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 ovmf tesseract-ocr grub-pc-bin grub-efi-amd64-bin grub2-common efibootmgr busybox-static linux-image-generic cpio dosfstools parted
+        run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 ovmf tesseract-ocr grub-pc-bin grub-efi-amd64-bin grub2-common efibootmgr busybox-static linux-image-generic cpio dosfstools parted zstd
       - name: Boot reference hybrid Linux in BIOS and UEFI
         run: python3 tests/vm/boot_linux.py
       - name: Repair GRUB and boot the repaired disk in BIOS and UEFI
