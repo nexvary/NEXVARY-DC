@@ -3,7 +3,7 @@
 namespace dc {
 QString validateStorageRequest(const QJsonObject &d,const QJsonObject &r) {
  const auto action=r.value("action").toString();
- if(!QStringList{"format","delete","create","layout","check","repair","windows_usb"}.contains(action))return "Unsupported storage action.";
+ if(!QStringList{"format","delete","create","layout","check","repair","windows_usb","windows_bios_usb","linux_usb"}.contains(action))return "Unsupported storage action.";
  if(d.value("boot").toBool() || d.value("system").toBool() || d.value("offline").toBool() || d.value("readOnly").toBool())return "System, offline or read-only disk is protected.";
  if(!d.value("external").toBool() || !QStringList{"USB","SD","MMC"}.contains(d.value("transport").toString()))return "Only external USB/SD/MMC media can be changed. Internal disks are protected.";
  if(d.value("uniqueId").toString().trimmed().isEmpty())return "Stable disk identity is unavailable.";

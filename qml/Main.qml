@@ -5,7 +5,7 @@ import QtQuick.Dialogs
 ApplicationWindow {
  id: root
  width:1280;height:850;minimumWidth:980;minimumHeight:700;visible:true
- title:"NEXVARY Disk Care · 0.2.0";color:"#080f17"
+ title:"NEXVARY Disk Care · 0.3.0";color:"#080f17"
  property bool arabic:true
  property int page:0
  property int diskIndex:-1
@@ -23,7 +23,7 @@ ApplicationWindow {
  property var iconNames:["overview","disk","rescue","maintenance","usb","capacity","reports","partition","boot","developer"]
  function t(ar,en){return arabic?ar:en}
  function size(bytes){return (Number(bytes||0)/1073741824).toFixed(2)+" GiB"}
- function operationName(value){const m={disk_discovery:t("اكتشاف الأقراص","Disk discovery"),smart_read:t("قراءة صحة القرص","Disk health read"),image_read:t("فحص الصورة","Image inspection"),image_copy:t("نسخ الصورة والتحقق","Image copy & verification"),surface_read:t("فحص قراءة السطح","Surface read scan"),media_rescue:t("إنشاء صورة إنقاذ","Media rescue image"),directory_capacity_test:t("اختبار كتابة وقراءة المساحة","Storage write/read test"),format:t("فورمات القسم","Partition format"),delete:t("حذف القسم","Partition deletion"),create:t("إنشاء قسم","Partition creation"),layout:t("إنشاء تقسيم جديد","New partition layout"),repair:t("إصلاح نظام الملفات","Filesystem repair"),check:t("فحص نظام الملفات","Filesystem scan"),windows_usb:t("تجهيز مثبت Windows","Windows installation media")};return m[value]||value||"—"}
+ function operationName(value){const m={disk_discovery:t("اكتشاف الأقراص","Disk discovery"),smart_read:t("قراءة صحة القرص","Disk health read"),image_read:t("فحص الصورة","Image inspection"),image_copy:t("نسخ الصورة والتحقق","Image copy & verification"),surface_read:t("فحص قراءة السطح","Surface read scan"),media_rescue:t("إنشاء صورة إنقاذ","Media rescue image"),directory_capacity_test:t("اختبار كتابة وقراءة المساحة","Storage write/read test"),format:t("فورمات القسم","Partition format"),delete:t("حذف القسم","Partition deletion"),create:t("إنشاء قسم","Partition creation"),layout:t("إنشاء تقسيم جديد","New partition layout"),repair:t("إصلاح نظام الملفات","Filesystem repair"),check:t("فحص نظام الملفات","Filesystem scan"),file_recovery:t("استعادة الصور من صورة الإنقاذ","Recover photos from rescue image"),linux_usb:t("تجهيز إقلاع Linux","Linux boot media"),windows_bios_usb:t("تجهيز Windows BIOS/UEFI","Windows BIOS/UEFI media"),windows_usb:t("تجهيز مثبت Windows","Windows installation media")};return m[value]||value||"—"}
  function message(s){
   if(!arabic)return s
   if(s.indexOf("Administrator")>=0)return "تحتاج العملية صلاحيات المسؤول. استخدم «تشغيل كمسؤول» ثم اختر القرص وأكد العملية من جديد."
@@ -45,6 +45,7 @@ ApplicationWindow {
  FileDialog {id:targetDialog;fileMode:FileDialog.SaveFile;onAccepted:targetPath.text=backend.localPath(selectedFile.toString())}
  FileDialog {id:isoDialog;nameFilters:["ISO (*.iso)"];onAccepted:if(root.isoCallback)root.isoCallback(backend.localPath(selectedFile.toString()))}
  FileDialog {id:reportDialog;fileMode:FileDialog.SaveFile;nameFilters:["JSON (*.json)"];onAccepted:root.notice=backend.exportReport(backend.localPath(selectedFile.toString()))?root.t("تم حفظ التقرير","Report saved"):root.t("تعذر الحفظ؛ اختر اسم ملف جديدًا","Save failed; choose a new filename")}
+ FolderDialog {id:recoveryFolder;onAccepted:recoveryPath.text=backend.localPath(selectedFolder.toString())}
  FolderDialog {id:folderDialog;onAccepted:capacityPath.text=backend.localPath(selectedFolder.toString())}
  Dialog {
   id:confirmDialog;modal:true;anchors.centerIn:parent;width:Math.min(root.width-80,640);closePolicy:Popup.CloseOnEscape
@@ -82,7 +83,7 @@ ApplicationWindow {
     Item {Layout.fillHeight:true}
     ActionButton {visible:backend.windows&&!backend.administrator;Layout.fillWidth:true;implicitHeight:34;text:root.t("تشغيل كمسؤول","Run as administrator");enabled:!backend.busy;onClicked:if(!backend.relaunchAdministrator())root.notice=root.t("لم تُمنح صلاحيات المسؤول؛ لم يبدأ أي إجراء","Administrator permission was not granted; no operation started")}
     Label {visible:!backend.windows||backend.administrator;text:backend.administrator?root.t("صلاحيات مسؤول","Administrator"):root.t("وضع المستخدم","User mode");color:backend.administrator?"#efbf78":"#74c7a7";font.pixelSize:11}
-    RowLayout {Label {text:"0.2.0";color:"#7999b0"}Item {Layout.fillWidth:true}ActionButton {text:root.arabic?"English":"العربية";implicitWidth:102;implicitHeight:34;onClicked:root.arabic=!root.arabic}}
+    RowLayout {Label {text:"0.3.0";color:"#7999b0"}Item {Layout.fillWidth:true}ActionButton {text:root.arabic?"English":"العربية";implicitWidth:102;implicitHeight:34;onClicked:root.arabic=!root.arabic}}
    }
   }
   ColumnLayout {Layout.fillWidth:true;Layout.fillHeight:true;Layout.margins:20;spacing:12
@@ -137,6 +138,14 @@ ApplicationWindow {
        RowLayout {Layout.fillWidth:true;TextField {id:imagePath;Layout.fillWidth:true;placeholderText:root.t("ملف الصورة المصدر","Source image");selectByMouse:true;enabled:!backend.busy}ActionButton {text:root.t("اختيار","Browse");implicitWidth:100;onClicked:sourceDialog.open()}}
        RowLayout {Layout.fillWidth:true;TextField {id:targetPath;Layout.fillWidth:true;placeholderText:root.t("ملف جديد للنسخة","New copy file");selectByMouse:true;enabled:!backend.busy}ActionButton {text:root.t("الوجهة","Destination");implicitWidth:100;onClicked:targetDialog.open()}}
        Flow {Layout.fillWidth:true;spacing:10;ActionButton {text:root.t("فحص الصورة","Inspect image");primary:true;enabled:!backend.busy&&imagePath.text.length>0;onClicked:backend.scanImage(imagePath.text)}ActionButton {text:root.t("نسخ والتحقق","Copy & verify");enabled:!backend.busy&&imagePath.text.length>0&&targetPath.text.length>0;onClicked:backend.copyImage(imagePath.text,targetPath.text)}}
+      }
+     }
+     Panel {visible:root.page===2;Layout.fillWidth:true
+      ColumnLayout {anchors.fill:parent;spacing:12
+       Label {text:root.t("استعادة صور PNG وJPEG","Recover PNG and JPEG photos");font.pixelSize:20;font.bold:true;color:"#e3f1fa"}
+       Label {text:root.t("اختر صورة الإنقاذ في الحقل أعلاه، وحدد مجلدًا على قرص الاستعادة. يبحث المحرك عن الصور المتصلة حتى 64 MiB للملف، بما فيها بيانات محذوفة لم تُكتب فوقها. لا يعيد أسماء الملفات أو المجلدات أو الملفات المجزأة. تُفحص CRC لصور PNG؛ صور JPEG تحتاج مراجعة بصرية. يحتفظ بالنتائج عند الإلغاء دون تعديل صورة المصدر.","Select the rescue image above and a folder on your recovery disk. Carves contiguous photos up to 64 MiB each, including deleted data that was not overwritten. Original names, folders and fragmented files are not restored. PNG CRC is checked; JPEG candidates need visual review. Cancellation retains results without modifying the source image.");color:"#a5bfd2";Layout.fillWidth:true;wrapMode:Text.WordWrap}
+       RowLayout {Layout.fillWidth:true;TextField {id:recoveryPath;Layout.fillWidth:true;placeholderText:root.t("مجلد الاستعادة على قرص آخر","Recovery folder on another disk");selectByMouse:true;enabled:!backend.busy}ActionButton {text:root.t("اختيار مجلد","Choose folder");onClicked:recoveryFolder.open()}}
+       ActionButton {text:root.t("بدء استعادة الصور","Start photo recovery");primary:true;enabled:!backend.busy&&imagePath.text.length>0&&recoveryPath.text.length>0;onClicked:backend.recoverImage(imagePath.text,recoveryPath.text)}
       }
      }
      StorageWorkspace {app:root;visible:root.page===3||root.page===4||root.page===7||root.page===8;bootMode:root.page===8;Layout.fillWidth:true}

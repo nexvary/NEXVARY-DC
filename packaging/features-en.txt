@@ -1,4 +1,4 @@
-NEXVARY DISK CARE 0.2.0
+NEXVARY DISK CARE 0.3.0
 Storage diagnostics and maintenance
 
 INCLUDED FEATURES
@@ -26,3 +26,6 @@ Capacity tests cover tested space, not exact physical NAND capacity.
 Rescue records 1 MiB unreadable chunks as zeros and cannot restore those bytes.
 Firmware flashing, physical surface repair, BIOS/Linux boot media and deleted-file
 recovery are not shipped. Physical boot and disk repair have not been hardware-tested.
+
+PNG/JPEG carving from rescue images with manifests, hashes and readback checks. Original filenames and folders are not restored.
+Windows x64 BIOS/UEFI media and hybrid Linux ISO writing with explicit confirmation, volume locking and readback verification. Physical boot requires testing.

@@ -1,4 +1,4 @@
-# NEXVARY Disk Care 0.2.0
+# NEXVARY Disk Care 0.3.0
 
 C++20 / Qt 6 desktop storage toolkit with Arabic RTL and English. Original colored icon set, developer page and bilingual installer. This remains an experimental build; physical hardware compatibility is not established by CI.
 
@@ -40,3 +40,11 @@ Run `./packaging/build-windows.ps1` from an MSVC developer terminal to deploy Qt
 Back up outside the target before writes. Counterfeit storage may corrupt existing files even during free-space tests. Read-only scans can stress failing drives. Cancelled rescue images and read maps are retained; incomplete images are explicitly marked. Storage mutations cannot be cancelled halfway through; do not disconnect the device or close the application.
 
 See [scope and nine observations](docs/OBSERVATIONS.md), [research](docs/RESEARCH.md), [architecture](docs/ARCHITECTURE.md) and [verification](docs/VERIFICATION.md).
+
+## Recovery and boot media in 0.3.0
+
+Data rescue now includes PNG/JPEG signature carving from a regular disk-image file. Choose the source image in Data rescue and a destination folder on a recovery disk. Results are placed in a new private folder with a JSON manifest, source offsets, SHA-256 hashes and verified file copies. Cancellation retains completed results. PNG chunks are CRC checked; JPEG end-marker candidates require visual inspection. The 64 MiB per-file and 10,000-file limits bound memory and output. This is not filesystem undelete: original names/folders, fragmented files, overwritten or TRIM-discarded bytes are not restored; allocated photos may also be found.
+
+On Windows, OS installation media offers Windows x64 UEFI/GPT, Windows x64 BIOS + UEFI/MBR, and raw hybrid Linux ISO writing. BIOS mode requires bootmgr and boot/bootsect.exe in a trusted Windows ISO; FAT32 WIM splitting remains available. Linux mode checks ISO9660 and hybrid MBR markers, locks and dismounts target filesystem volumes, writes aligned sectors and verifies image bytes by SHA-256 readback. The selected image determines its actual BIOS/UEFI/Secure Boot compatibility. A marker check cannot prove firmware bootability.
+
+All media writes require administrator access, enumerated external USB/SD/MMC identity and the existing explicit device confirmation. Internal/system/offline/read-only disks remain protected. Files open on the target cause volume-lock failure before raw writing. A write failure after starting can leave incomplete boot media. Hardware boot and recovery on real failing drives remain unverified; use copies and test media first.

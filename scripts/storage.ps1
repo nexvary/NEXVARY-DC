@@ -3,6 +3,7 @@ $ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
 [Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
 . (Join-Path $PSScriptRoot 'policy.ps1')
+. (Join-Path $PSScriptRoot 'hybrid.ps1')
 $r=([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($RequestBase64)) | ConvertFrom-Json)
 function Emit($Value) { $Value | ConvertTo-Json -Depth 12 -Compress }
 function FreshDisk { Get-Disk -Number ([int]$r.number) -ErrorAction Stop }
@@ -14,6 +15,8 @@ function Guard {
  foreach($p in $parts) { if($p.DriveLetter -and ([string]$p.DriveLetter -in $pageLetters)) { throw 'Disk contains an active pagefile.' } }
  foreach($path in @($PSScriptRoot, $env:USERPROFILE, $r.source)) {
   if($path -and [IO.Path]::IsPathRooted([string]$path)) {
+   $resolved=@(Get-Volume -FilePath ([string]$path) -ErrorAction Stop | Get-Partition -ErrorAction Stop)
+   if($resolved | Where-Object { $_.DiskNumber -eq $d.Number }) { throw 'Disk contains the application, user profile or source image through a mounted path.' }
    $root=[IO.Path]::GetPathRoot([string]$path).TrimEnd('\').TrimEnd(':')
    if($root.Length -eq 1 -and ($parts | Where-Object { [string]$_.DriveLetter -eq $root })) { throw 'Disk contains the application, user profile or source image.' }
   }
@@ -36,7 +39,7 @@ try {
  $admin=([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
  if(!$admin) { throw 'Administrator permission required. Use the administrator button, then select and confirm again.' }
  $d=Guard
- if($r.action -notin @('format','delete','create','layout','check','repair','windows_usb')) { throw 'Unsupported action.' }
+ if($r.action -notin @('format','delete','create','layout','check','repair','windows_usb','windows_bios_usb','linux_usb')) { throw 'Unsupported action.' }
  $partition=$null
  if($r.action -in @('format','delete','check','repair')) {
   $partition=Get-Partition -DiskNumber $d.Number -PartitionNumber ([int]$r.partition)
@@ -66,7 +69,11 @@ try {
   if($r.action -eq 'check') { Repair-Volume -DriveLetter $partition.DriveLetter -Scan | Out-Null }
   else { Repair-Volume -DriveLetter $partition.DriveLetter -OfflineScanAndFix | Out-Null }
  }
- elseif($r.action -eq 'windows_usb') {
+ elseif($r.action -eq 'linux_usb') {
+  Emit (Write-HybridImage $d ([string]$r.source));exit 0
+ }
+ elseif($r.action -in @('windows_usb','windows_bios_usb')) {
+  $bios=$r.action -eq 'windows_bios_usb'
   if(!(Test-Path -LiteralPath $r.source -PathType Leaf) -or [IO.Path]::GetExtension($r.source) -ine '.iso') { throw 'Select an existing Windows ISO.' }
   $image=Mount-DiskImage -ImagePath $r.source -PassThru
   try {
@@ -74,6 +81,8 @@ try {
    if(!$vol.DriveLetter) { throw 'Unable to mount ISO.' }
    $source="$($vol.DriveLetter):\"
    if(!(Test-Path -LiteralPath (Join-Path $source 'efi\boot\bootx64.efi')) -or !(Test-Path -LiteralPath (Join-Path $source 'sources\boot.wim'))) { throw 'Only Windows x64 UEFI installation ISOs are supported.' }
+   if($bios -and (!(Test-Path -LiteralPath (Join-Path $source 'boot\bootsect.exe')) -or !(Test-Path -LiteralPath (Join-Path $source 'bootmgr')))) { throw 'ISO lacks the BIOS boot loader or bootsect utility.' }
+   if($bios -and $d.Size -gt 2TB) { throw 'BIOS MBR media above 2 TiB is unsupported.' }
    $files=@(Get-ChildItem -LiteralPath $source -File -Recurse)
    $tooLarge=@($files | Where-Object {$_.Length -ge 4GB -and $_.FullName -ine (Join-Path $source 'sources\install.wim')})
    if($tooLarge.Count) { throw 'ISO contains a large non-WIM file incompatible with FAT32.' }
@@ -82,9 +91,10 @@ try {
    if($partSize -lt $total+512MB) { throw 'Not enough USB space for this ISO plus reserve.' }
    $null=Guard
    Clear-Disk -Number $d.Number -RemoveData -RemoveOEM -Confirm:$false
-   Initialize-Disk -Number $d.Number -PartitionStyle GPT | Out-Null
+   Initialize-Disk -Number $d.Number -PartitionStyle $(if($bios){'MBR'}else{'GPT'}) | Out-Null
    $p=New-Partition -DiskNumber $d.Number -Size $partSize -AssignDriveLetter
    $p | Format-Volume -FileSystem FAT32 -NewFileSystemLabel 'NEXVARYBOOT' -Force -Confirm:$false | Out-Null
+   if($bios) { $p | Set-Partition -IsActive $true }
    $target="$($p.DriveLetter):\"
    $verified=0L
    foreach($f in $files) {
@@ -99,7 +109,11 @@ try {
      $verified+=$f.Length
     }
    }
-   Emit @{status='completed';operation='windows_usb';message='Windows x64 UEFI media created. Copied files passed SHA-256 readback; split WIM passed DISM integrity processing. Physical boot not tested.';verifiedBytes=$verified;splitWimReadbackVerified=$false;device=$r.device}
+   if($bios) {
+    & (Join-Path $source 'boot\bootsect.exe') /nt60 "$($p.DriveLetter):" /mbr | Out-Null
+    if($LASTEXITCODE -ne 0) { throw 'BIOS boot-code installation failed; media is incomplete.' }
+   }
+   Emit @{status='completed';operation=$r.action;bootMode=$(if($bios){'BIOS + UEFI (MBR)'}else{'UEFI (GPT)'});message='Windows x64 installation media created. Copied files passed SHA-256 readback; split WIM passed DISM integrity processing. Physical boot not tested.';verifiedBytes=$verified;splitWimReadbackVerified=$false;device=$r.device}
    exit 0
   } finally { Dismount-DiskImage -ImagePath $r.source -ErrorAction SilentlyContinue | Out-Null }
  }

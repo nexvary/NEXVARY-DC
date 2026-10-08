@@ -2,6 +2,7 @@
 #include "Operations.h"
 #include "StoragePolicy.h"
 #include "MediaRead.h"
+#include "Recovery.h"
 #include <QCoreApplication>
 #include <QTemporaryDir>
 #include <QUuid>
@@ -46,7 +47,7 @@ QJsonObject storageProcess(const QJsonObject &request,std::atomic_bool *cancel=n
 #ifdef Q_OS_WIN
  QTemporaryDir dir;
  if(!dir.isValid())return fail("Cannot stage storage helper.");
- for(const auto &name:QStringList{"storage.ps1","policy.ps1"}) {
+ for(const auto &name:QStringList{"storage.ps1","policy.ps1","hybrid.ps1"}) {
   QFile src(":/storage/"+name);
   if(!src.copy(dir.filePath(name)))return fail("Storage helper unavailable.");
  }
@@ -142,7 +143,7 @@ void Controller::testCapacity(const QString &dir,int mib,bool ack) {
 void Controller::cancel(){if(interruptible())m_cancel=true;}
 QString Controller::localPath(const QString &url) const {QUrl u(url);return u.isLocalFile()?u.toLocalFile():url;}
 void Controller::setResult(const QJsonObject &input) {
- auto result=input;result.insert("appVersion","0.2.0");result.insert("recordedAt",QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+ auto result=input;result.insert("appVersion","0.3.0");result.insert("recordedAt",QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
  m_report=QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Indented));
  if(m_db.isOpen()) {QSqlQuery q(m_db);q.prepare("INSERT INTO operations(created,operation,report) VALUES(?,?,?)");q.addBindValue(result.value("recordedAt").toString());q.addBindValue(result.value("operation").toString(m_operation));q.addBindValue(m_report);if(!q.exec()){result.insert("historySaved",false);m_report=QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Indented));}}
  m_result=result.toVariantMap();
@@ -189,7 +190,7 @@ QVariantMap Controller::prepareStorage(const QString &device,const QString &acti
  for(auto p:d.value("partitions").toArray())if(p.toObject().value("partition").toInt()==part){r.insert("offset",p.toObject().value("offset"));r.insert("partitionBytes",p.toObject().value("partitionBytes"));}
  const auto error=dc::validateStorageRequest(d,r);if(!error.isEmpty())return QVariantMap{{"error",error}};
  m_pending=r;m_pendingToken=QUuid::createUuid().toString(QUuid::WithoutBraces);m_pendingExpires=QDateTime::currentSecsSinceEpoch()+180;
- return QVariantMap{{"token",m_pendingToken},{"device",device},{"model",d.value("model").toString()},{"bytes",d.value("bytes").toVariant()},{"action",action},{"partition",part},{"challenge",device},{"allData",action=="layout" || action=="windows_usb"}};
+ return QVariantMap{{"token",m_pendingToken},{"device",device},{"model",d.value("model").toString()},{"bytes",d.value("bytes").toVariant()},{"action",action},{"partition",part},{"challenge",device},{"allData",action=="layout" || action=="windows_usb" || action=="windows_bios_usb" || action=="linux_usb"}};
 }
 void Controller::executeStorage(const QString &token,const QString &confirmation,bool acknowledged) {
  if(m_busy)return;
@@ -210,4 +211,9 @@ void Controller::rescueDisk(const QString &device,const QString &destination,boo
  qint64 bytes=0;for(const auto &d:m_disks)if(d.toMap().value("device").toString()==device)bytes=d.toMap().value("bytes").toLongLong();
  if(!acknowledged || !bytes){setResult(fail("Select an enumerated disk and acknowledge rescue limitations."));return;}
  start("media_rescue",[this,device,bytes,destination]{return dc::rescueMedia(device,bytes,destination,{&m_cancel,[this](qint64 n,qint64 total){QMetaObject::invokeMethod(this,[this,n,total]{m_progress=total?double(n)/double(total):0;emit stateChanged();},Qt::QueuedConnection);}});});
+}
+
+void Controller::recoverImage(const QString &source,const QString &directory) {
+ if(m_busy)return;
+ start("file_recovery",[this,source,directory]{return dc::recoverImage(source,directory,{&m_cancel,[this](qint64 n,qint64 total){QMetaObject::invokeMethod(this,[this,n,total]{m_progress=total?double(n)/double(total):0;emit stateChanged();},Qt::QueuedConnection);}});});
 }

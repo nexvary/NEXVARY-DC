@@ -40,6 +40,7 @@ public:
  Q_INVOKABLE void inspectHealth(const QString &device);
  Q_INVOKABLE void scanSurface(const QString &device,bool acknowledged);
  Q_INVOKABLE void rescueDisk(const QString &device,const QString &destination,bool acknowledged);
+ Q_INVOKABLE void recoverImage(const QString &source,const QString &directory);
  Q_INVOKABLE void scanImage(const QString &path);
  Q_INVOKABLE void copyImage(const QString &source,const QString &destination);
  Q_INVOKABLE void testCapacity(const QString &directory,int mib,bool acknowledged);
