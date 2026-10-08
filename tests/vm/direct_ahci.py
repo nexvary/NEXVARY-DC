@@ -42,6 +42,8 @@ for line in subprocess.check_output(['modprobe','--set-version',version,'--show-
 subprocess.run(['depmod','--basedir',str(ram),version],check=True)
 data=bytes(range(256))*8192
 source=out/'source.img';source.write_bytes(data)
+overlay=out/'source.qcow2'
+subprocess.run(['qemu-img','create','-f','qcow2','-F','raw','-b',str(source),str(overlay)],check=True)
 expected=hashlib.sha256(data).hexdigest()
 (ram/'direct-guest.py').write_text('''import hashlib,json,pathlib,sys
 sys.path.insert(0,'/')
@@ -87,7 +89,7 @@ with log.open('wb') as stream:
     process=subprocess.Popen(['qemu-system-x86_64','-machine','q35','-accel','tcg','-m','1024','-display','none',
          '-serial','stdio','-no-reboot','-nic','none','-kernel',str(kernel),'-initrd',str(initrd),
          '-append','console=ttyS0 rdinit=/init iommu=off iomem=relaxed libata.force=1:disable',
-         '-drive','if=none,id=source,format=raw,readonly=on,file='+str(source),
+         '-drive','if=none,id=source,format=qcow2,file='+str(overlay),
          '-device','ide-hd,drive=source,bus=ide.0,serial=DC_TEST_SERIAL'],stdout=stream,stderr=subprocess.STDOUT)
     try:
         deadline=time.monotonic()+240
@@ -99,6 +101,8 @@ with log.open('wb') as stream:
 text=log.read_text(errors='replace')
 assert 'DC_DIRECT_AHCI_OK=' in text,text[-14000:]
 assert hashlib.sha256(source.read_bytes()).hexdigest()==expected,'Source changed'
-result={'transport':'OpenSuperClone direct AHCI MMIO/DMA','sourceSHA256':expected,'sourceUnchanged':True,
+extents=json.loads(subprocess.check_output(['qemu-img','map','--output=json',str(overlay)],text=True))
+assert not any(x.get('depth')==0 and x.get('data') for x in extents),'Source write allocated an overlay data cluster'
+result={'sourceWritesObserved':False,'transport':'OpenSuperClone direct AHCI MMIO/DMA','sourceSHA256':expected,'sourceUnchanged':True,
         'readBytes':len(data),'cancelResumeTested':True,'sourceIdentityRejected':True,'physicalHardwareTested':False}
 (out/'results.json').write_text(json.dumps(result,indent=2));print(json.dumps(result))

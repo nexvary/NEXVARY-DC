@@ -279,6 +279,7 @@ jobs:
           if-no-files-found: warn
 
   windows-vm:
+    if: ${{ always() && needs.linux-vm.result != 'cancelled' }}
     needs: linux-vm
     runs-on: windows-2022
     timeout-minutes: 80
