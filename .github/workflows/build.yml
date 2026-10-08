@@ -4,7 +4,7 @@ on:
   pull_request:
   workflow_dispatch:
 concurrency:
-  group: disk-care-${{ github.workflow }}-${{ github.ref }}
+  group: disk-care-${{ github.workflow }}-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: true
 permissions:
   contents: read
@@ -383,4 +383,5 @@ jobs:
               assert p.stat().st_size==row['bytes']
               assert hashlib.sha256(p.read_bytes()).hexdigest()==row['sha256']
           PYVERIFY
+          test "$(gh api repos/nexvary/NEXVARY-DC/git/ref/heads/main --jq .object.sha)" = "$GITHUB_SHA"
           gh release create v0.7.0 release/* --target "$GITHUB_SHA" --title 'NEXVARY Disk Care 0.7.0' --notes-file docs/RELEASE-0.7.0.md
