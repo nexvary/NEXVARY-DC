@@ -84,13 +84,16 @@ ata28cmd 0 0 0 0 0 0xa0 0xec
 sets $serial = buffer 20 20
 sets $model = buffer 54 40
 sets $firmware = buffer 46 8
-if $serial != "{serial.ljust(20)}"
+sets $expected_serial = "{serial.ljust(20)}"
+if $serial != $expected_serial
  exit 7
 endif
-if $model != "{model.ljust(40)}"
+sets $expected_model = "{model.ljust(40)}"
+if $model != $expected_model
  exit 7
 endif
-if $firmware != "{firmware.ljust(8)}"
+sets $expected_firmware = "{firmware.ljust(8)}"
+if $firmware != $expected_firmware
  exit 7
 endif
 wordflipbuffer 0 512
@@ -114,7 +117,8 @@ ata48cmd 0 {count} {(lba>>32)&65535} {(lba>>16)&65535} {lba&65535} 0xe0 0x25
 {check}if $data_transferred != {count*512}
  exit 9
 endif
-writebuffer "{output}" 0 0 {count*512}
+sets $output = "{output}"
+writebuffer $output 0 0 {count*512}
 echo "DC_READ_OK"
 exit 0
 '''

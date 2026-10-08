@@ -1,4 +1,5 @@
 import hashlib
+import os
 import json
 from pathlib import Path
 import sys
@@ -80,6 +81,7 @@ class DirectTests(unittest.TestCase):
         self.assertIn('ata28cmd 0 0 0 0 0 0xa0 0xec',script)
         source.identity['serial']='evil"\nwrite'
         with self.assertRaises(ValueError):dr.read_script(source.identity,0,1,'/tmp/data.bin')
+    @unittest.skipUnless(os.name == "posix", "Linux sysfs controller protection")
     def test_controller_system_and_shared_protection(self):
         root=Path(self.tmp.name);device=root/'bus/pci/devices/0000:00:02.0';device.mkdir(parents=True)
         for key,value in {'class':'0x010601','vendor':'0x8086','device':'0x2922','resource':'0 0 0\n'*5+'0xf0000000 0xf0001fff 0x200\n'}.items():(device/key).write_text(value)

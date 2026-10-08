@@ -41,9 +41,17 @@ def qualify(output, direct=False):
     help_text = run([str(executable), '--help'])
     if 'OpenSuperClone' not in version or '2.5' not in version or '--tool' not in help_text:
         raise ValueError('Engine identity/help mismatch')
+    tested = ['source_build','version','help']
+    if direct:
+        from direct_rescue import read_script
+        identity = dict(model='QEMU HARDDISK',serial='DC_TEST_SERIAL',firmware='2.5+',bytes=2097152)
+        script = output / 'read-check.osc'
+        script.write_text(read_script(identity,0,2048,'/tmp/dc_read_check.bin'))
+        run([str(executable),'--tool','--check','--file',str(script)])
+        tested.append('generated_read_script_syntax')
     report = dict(directAdapter=1 if direct else 0, upstream=UPSTREAM, commit=actual, license='GPL-2.0',
                   binarySHA256=hashlib.sha256(executable.read_bytes()).hexdigest(),
-                  version=version, tested=['source_build', 'version', 'help'],
+                  version=version, tested=tested,
                   diskAccessTested=False, directAHCITested=False, relayTested=False,
                   kernelDriverBuilt=False, kernelDriverLoaded=False,
                   linkedIntoNexvary=False, firmwareRepairCertified=False)
