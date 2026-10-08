@@ -13,7 +13,7 @@ function Guard {
  $parts=@(Get-Partition -DiskNumber $d.Number -ErrorAction SilentlyContinue)
  $pageLetters=@(Get-CimInstance Win32_PageFileUsage -ErrorAction Stop | ForEach-Object { $_.Name.Substring(0,1) })
  foreach($p in $parts) { if($p.DriveLetter -and ([string]$p.DriveLetter -in $pageLetters)) { throw 'Disk contains an active pagefile.' } }
- foreach($path in @($PSScriptRoot, $env:USERPROFILE, $r.source)) {
+ foreach($path in @($PSScriptRoot, $env:USERPROFILE, $r.source, $r.appDirectory)) {
   if($path -and [IO.Path]::IsPathRooted([string]$path)) {
    $resolved=@(Get-Volume -FilePath ([string]$path) -ErrorAction Stop | Get-Partition -ErrorAction Stop)
    if($resolved | Where-Object { $_.DiskNumber -eq $d.Number }) { throw 'Disk contains the application, user profile or source image through a mounted path.' }

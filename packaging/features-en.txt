@@ -29,3 +29,4 @@ recovery are not shipped. Physical boot and disk repair have not been hardware-t
 
 PNG/JPEG carving from rescue images with manifests, hashes and readback checks. Original filenames and folders are not restored.
 Windows x64 BIOS/UEFI media and hybrid Linux ISO writing with explicit confirmation, volume locking and readback verification. Physical boot requires testing.
+Deleted contiguous FAT32 file recovery from volume images or primary MBR partitions, with free-cluster checks, manifests and file hashes. Overwritten content cannot be guaranteed.

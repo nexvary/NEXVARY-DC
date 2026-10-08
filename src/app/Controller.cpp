@@ -21,6 +21,7 @@
 #include <QDateTime>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QFileInfo>
 #include <QUrl>
 namespace {
 QJsonObject fail(const QString &text) {return {{"status","error"},{"message",text}};}
@@ -186,7 +187,7 @@ QVariantMap Controller::prepareStorage(const QString &device,const QString &acti
  if(!windows())return QVariantMap{{"error","Storage management in this release requires Windows."}};
  if(!administrator())return QVariantMap{{"error","Administrator permission required. Relaunch and select the disk again."}};
  QJsonObject d;for(const auto &v:m_disks)if(v.toMap().value("device").toString()==device)d=QJsonObject::fromVariantMap(v.toMap());
- auto r=d;r.insert("action",action);r.insert("partition",part);r.insert("filesystem",fs);r.insert("style",style);r.insert("sizeMiB",mib);r.insert("source",source);
+ auto r=d;r.insert("action",action);r.insert("partition",part);r.insert("filesystem",fs);r.insert("style",style);r.insert("sizeMiB",mib);r.insert("source",source.isEmpty()?QString{}:QFileInfo(source).absoluteFilePath());r.insert("appDirectory",QCoreApplication::applicationDirPath());
  for(auto p:d.value("partitions").toArray())if(p.toObject().value("partition").toInt()==part){r.insert("offset",p.toObject().value("offset"));r.insert("partitionBytes",p.toObject().value("partitionBytes"));}
  const auto error=dc::validateStorageRequest(d,r);if(!error.isEmpty())return QVariantMap{{"error",error}};
  m_pending=r;m_pendingToken=QUuid::createUuid().toString(QUuid::WithoutBraces);m_pendingExpires=QDateTime::currentSecsSinceEpoch()+180;
@@ -213,7 +214,7 @@ void Controller::rescueDisk(const QString &device,const QString &destination,boo
  start("media_rescue",[this,device,bytes,destination]{return dc::rescueMedia(device,bytes,destination,{&m_cancel,[this](qint64 n,qint64 total){QMetaObject::invokeMethod(this,[this,n,total]{m_progress=total?double(n)/double(total):0;emit stateChanged();},Qt::QueuedConnection);}});});
 }
 
-void Controller::recoverImage(const QString &source,const QString &directory) {
+void Controller::recoverImage(const QString &source,const QString &directory,bool fat32) {
  if(m_busy)return;
- start("file_recovery",[this,source,directory]{return dc::recoverImage(source,directory,{&m_cancel,[this](qint64 n,qint64 total){QMetaObject::invokeMethod(this,[this,n,total]{m_progress=total?double(n)/double(total):0;emit stateChanged();},Qt::QueuedConnection);}});});
+ start(fat32?"fat32_recovery":"file_recovery",[this,source,directory,fat32]{return (fat32?dc::recoverFat32:dc::recoverImage)(source,directory,{&m_cancel,[this](qint64 n,qint64 total){QMetaObject::invokeMethod(this,[this,n,total]{m_progress=total?double(n)/double(total):0;emit stateChanged();},Qt::QueuedConnection);}});});
 }
