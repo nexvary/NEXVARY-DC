@@ -46,6 +46,7 @@ public:
  Q_INVOKABLE void testCapacity(const QString &directory,int mib,bool acknowledged);
  Q_INVOKABLE void cancel();
  Q_INVOKABLE bool exportReport(const QString &destination);
+ Q_INVOKABLE QString fileUrl(const QString &path) const;
  Q_INVOKABLE QString localPath(const QString &url) const;
 signals:
  void volumesChanged();void disksChanged();void historyChanged();void stateChanged();void reportChanged();

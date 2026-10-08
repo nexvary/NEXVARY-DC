@@ -142,6 +142,7 @@ void Controller::testCapacity(const QString &dir,int mib,bool ack) {
  start("directory_capacity_test",[this,dir,mib,ack]{return dc::testDirectory(dir,mib,ack,{&m_cancel,[this](qint64 n,qint64 total){QMetaObject::invokeMethod(this,[this,n,total]{m_progress=total?double(n)/double(total):0;emit stateChanged();},Qt::QueuedConnection);}});});
 }
 void Controller::cancel(){if(interruptible())m_cancel=true;}
+QString Controller::fileUrl(const QString &path) const {return QUrl::fromLocalFile(path).toString();}
 QString Controller::localPath(const QString &url) const {QUrl u(url);return u.isLocalFile()?u.toLocalFile():url;}
 void Controller::setResult(const QJsonObject &input) {
  auto result=input;result.insert("appVersion","0.3.0");result.insert("recordedAt",QDateTime::currentDateTimeUtc().toString(Qt::ISODate));

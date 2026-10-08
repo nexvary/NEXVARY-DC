@@ -54,6 +54,23 @@ jobs:
           QT_QPA_PLATFORM: offscreen
           QT_QUICK_BACKEND: software
         run: ctest --test-dir build -C Release --output-on-failure
+      - name: Capture recovery and boot UI
+        if: runner.os == 'Linux'
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QT_QUICK_BACKEND: software
+        run: |
+          mkdir -p out/ui
+          build/nexvary_dc --page 2 --screenshot out/ui/recovery-ar.png
+          build/nexvary_dc --page 8 --screenshot out/ui/boot-ar.png
+          build/nexvary_dc --page 8 --english --compact --screenshot out/ui/boot-en-compact.png
+      - name: Upload UI proof
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: NEXVARY-DC-UI-0.3.0
+          path: out/ui/
+          if-no-files-found: error
       - name: Deploy Windows
         if: runner.os == 'Windows'
         shell: pwsh
