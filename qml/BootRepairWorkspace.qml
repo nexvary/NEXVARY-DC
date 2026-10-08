@@ -12,6 +12,7 @@ Panel {
   ColumnLayout {visible:backend.windows;Layout.fillWidth:true;spacing:10
    Label {text:app.t("استعادة أولوية Linux في UEFI من Windows","Restore Linux UEFI priority from Windows");color:"#eff5fa";font.bold:true;Layout.fillWidth:true;wrapMode:Text.WordWrap}
    Label {text:app.t("إذا بقي إدخال GRUB أو shim في الفيرموير، يمكن تقديمه على Windows Boot Manager دون كتابة ملفات الأقسام. هذا لا يعيد إنشاء ملفات EFI المفقودة. يحتاج المسؤول؛ ويُرفض التنفيذ إذا تعذر تفسير ترتيب الإقلاع بأمان.","If a GRUB or shim firmware entry survives, it can be moved before Windows Boot Manager without writing partition files. This does not recreate missing EFI files. Requires administrator permission and a safely parseable firmware order.");color:"#b2c5d5";Layout.fillWidth:true;wrapMode:Text.WordWrap}
+   ActionButton {visible:!backend.administrator;text:app.t("تشغيل كمسؤول لفحص الإقلاع","Run as administrator to inspect boot");enabled:!backend.busy;onClicked:backend.relaunchAdministrator()}
    ActionButton {text:app.t("فحص إدخالات إقلاع Linux","Inspect Linux firmware entries");enabled:!backend.busy&&backend.administrator;onClicked:backend.prepareFirmwareBoot()}
    ComboBox {id:firmwareEntries;Layout.fillWidth:true;property var entries:backend.result.entries||[];model:entries.map(e=>e.id+" · "+e.path);enabled:!backend.busy}
    ActionButton {text:app.t("عرض خطة تغيير الأولوية","Review priority change");enabled:!backend.busy&&firmwareEntries.currentIndex>=0;onClicked:backend.prepareFirmwareBoot(firmwareEntries.entries[firmwareEntries.currentIndex].id)}
