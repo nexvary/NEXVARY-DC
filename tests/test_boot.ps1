@@ -1,4 +1,5 @@
 $ErrorActionPreference='Stop'
+Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Utility/Microsoft.PowerShell.Utility.psd1') -ErrorAction Stop
 $root=Split-Path $PSScriptRoot -Parent
 foreach($name in @('storage.ps1','policy.ps1','hybrid.ps1')) {
  $tokens=$null;$errors=$null
@@ -31,5 +32,8 @@ try {
  $rejected=$false
  try {$null=Write-HybridImage ([pscustomobject]@{LogicalSectorSize=512;Size=2097152}) $source}catch{$rejected=$true}
  if(!$rejected){throw 'Non-hybrid source accepted'}
+ $request=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('{"action":"inventory"}'))
+ $inventory=& (Join-Path $root 'scripts/storage.ps1') -RequestBase64 $request | ConvertFrom-Json
+ if($inventory.status -ne 'completed' -or !$inventory.devices){throw 'Windows storage inventory unavailable'}
  Write-Host 'Boot helper parse, compilation, source guard, aligned writing and SHA-256 readback tests passed.'
 } finally {Remove-Item $dir -Recurse -Force}

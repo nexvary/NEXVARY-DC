@@ -1,5 +1,8 @@
 param([Parameter(Mandatory)][string]$RequestBase64)
 $ErrorActionPreference='Stop'
+Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Utility/Microsoft.PowerShell.Utility.psd1') -ErrorAction Stop
+Import-Module (Join-Path $PSHOME 'Modules/CimCmdlets/CimCmdlets.psd1') -ErrorAction Stop
+Import-Module (Join-Path $PSHOME 'Modules/Storage/Storage.psd1') -ErrorAction Stop
 $ProgressPreference='SilentlyContinue'
 [Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
 . (Join-Path $PSScriptRoot 'policy.ps1')
