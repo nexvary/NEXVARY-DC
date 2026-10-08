@@ -33,6 +33,7 @@ int main(int argc,char **argv) {
  if(engine.rootObjects().isEmpty())return 1;
  auto *root=engine.rootObjects().first();
  if(args.contains("--english"))root->setProperty("arabic",false);
+ if(args.contains("--boot-repair"))root->setProperty("bootRepairMode",true);
  const int page=args.indexOf("--page");
  if(page>=0 && page+1<args.size())root->setProperty("page",qBound(0,args[page+1].toInt(),9));
  if(args.contains("--compact")){root->setProperty("width",980);root->setProperty("height",700);}

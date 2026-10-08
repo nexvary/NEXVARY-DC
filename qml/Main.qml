@@ -8,6 +8,7 @@ ApplicationWindow {
  title:"NEXVARY Disk Care · 0.5.0";color:"#080f17"
  property bool arabic:true
  property int page:0
+ property bool bootRepairMode:false
  property int diskIndex:-1
  property var selectedDisk: diskIndex>=0&&diskIndex<backend.disks.length?backend.disks[diskIndex]:({})
  property string notice:""
@@ -154,8 +155,12 @@ ApplicationWindow {
        Flow {Layout.fillWidth:true;spacing:10;ActionButton {text:root.t("فحص الصورة","Inspect image");primary:true;enabled:!backend.busy&&imagePath.text.length>0;onClicked:backend.scanImage(imagePath.text)}ActionButton {text:root.t("نسخ والتحقق","Copy & verify");enabled:!backend.busy&&imagePath.text.length>0&&targetPath.text.length>0;onClicked:backend.copyImage(imagePath.text,targetPath.text)}}
       }
      }
-     StorageWorkspace {app:root;visible:root.page===3||root.page===4||root.page===7||root.page===8;bootMode:root.page===8;Layout.fillWidth:true}
-     BootRepairWorkspace {app:root;visible:root.page===8;Layout.fillWidth:true}
+     RowLayout {visible:root.page===8;Layout.fillWidth:true
+      ActionButton {text:root.t("تجهيز فلاشة تثبيت","Create installation media");primary:!root.bootRepairMode;onClicked:root.bootRepairMode=false}
+      ActionButton {text:root.t("إصلاح الإقلاع","Repair boot");primary:root.bootRepairMode;onClicked:root.bootRepairMode=true}
+     }
+     StorageWorkspace {app:root;visible:root.page===3||root.page===4||root.page===7||(root.page===8&&!root.bootRepairMode);bootMode:root.page===8;Layout.fillWidth:true}
+     BootRepairWorkspace {app:root;visible:root.page===8&&root.bootRepairMode;Layout.fillWidth:true}
      Panel {visible:root.page===3;Layout.fillWidth:true
       ColumnLayout {anchors.fill:parent;spacing:10;Label {text:root.t("Firmware ومعالجة التلف المادي","Firmware and physical damage");font.bold:true;font.pixelSize:18;color:"#e6c382"}Label {text:root.t("نسخة Firmware تظهر في نتيجة SMART عند دعم الجهاز. تحديثه يحتاج حزمة متوافقة مع الموديل من الشركة المصنّعة؛ لا يوجد تحديث عام لكل الأقراص. إصلاح نظام الملفات لا يعالج تلف السطح المادي.","Firmware version is shown in SMART when supported. Updating requires a model-matched manufacturer package; no universal drive update exists. Filesystem repair does not repair physical surface damage.");color:"#b6cbdb";Layout.fillWidth:true;wrapMode:Text.WordWrap}ActionButton {text:root.t("قراءة بيانات الجهاز","Read drive details");enabled:!backend.busy&&!!root.selectedDisk.device;onClicked:backend.inspectHealth(root.selectedDisk.device)}}
      }

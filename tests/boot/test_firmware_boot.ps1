@@ -1,4 +1,4 @@
-$ErrorActionPreference='Stop'
+﻿$ErrorActionPreference='Stop'
 . "$PSScriptRoot/../../scripts/firmware_boot.ps1"
 $linux='{12345678-1111-2222-3333-123456789abc}'
 $windows='{9dea862c-5cdd-4e70-acc1-f32b344d4795}'

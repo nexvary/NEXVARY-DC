@@ -64,6 +64,8 @@ jobs:
         run: |
           mkdir -p out/ui
           build/nexvary_dc --page 2 --screenshot out/ui/recovery-ar.png
+          build/nexvary_dc --page 8 --boot-repair --compact --screenshot out/ui/repair-ar.png
+          build/nexvary_dc --page 8 --boot-repair --english --compact --screenshot out/ui/repair-en.png
           build/nexvary_dc --page 8 --screenshot out/ui/boot-ar.png
           build/nexvary_dc --page 8 --english --compact --screenshot out/ui/boot-en-compact.png
           python3 -c "import base64,pathlib; print('DC_UI_PNG='+base64.b64encode(pathlib.Path('out/ui/recovery-ar.png').read_bytes()).decode())"
@@ -73,6 +75,29 @@ jobs:
         with:
           name: NEXVARY-DC-UI-0.5.0
           path: out/ui/
+          if-no-files-found: error
+      - name: Capture Windows boot repair UI
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QT_QUICK_BACKEND: software
+        run: |
+          New-Item -ItemType Directory -Force out/ui-windows | Out-Null
+          foreach($language in @('ar','en')) {
+            $arguments=@('--page','8','--boot-repair','--compact','--screenshot',"out/ui-windows/repair-$language.png")
+            if($language -eq 'en') {$arguments+='--english'}
+            $p=Start-Process build/Release/nexvary_dc.exe -ArgumentList $arguments -PassThru
+            if(!$p.WaitForExit(45000)) {$p.Kill();throw 'Repair UI screenshot timeout'}
+            if($p.ExitCode -ne 0) {throw 'Repair UI screenshot failed'}
+          }
+          python -c "import base64,pathlib; print('DC_WINDOWS_REPAIR_PNG='+base64.b64encode(pathlib.Path('out/ui-windows/repair-ar.png').read_bytes()).decode())"
+      - name: Upload Windows repair UI
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: NEXVARY-DC-Windows-Repair-UI-0.5.0
+          path: out/ui-windows/
           if-no-files-found: error
       - name: Deploy Windows
         if: runner.os == 'Windows'

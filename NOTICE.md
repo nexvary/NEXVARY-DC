@@ -9,3 +9,5 @@ Qt 6.8.3 runtime libraries are dynamically deployed. LGPL v3 / GPL v3 license te
 App-local Microsoft Visual C++ runtime DLLs are redistributed from the MSVC redist folder under Microsoft's redistribution terms.
 
 Arabic Inno Setup translation comes from jrsoftware/issrc Files/Languages/Arabic.isl; translator attribution is retained in that file. Other-company names identify compatibility and upstream tools; they do not imply endorsement.
+
+Offline Linux boot repair invokes the live distribution's installed GNU GRUB and efibootmgr tools. No GRUB binaries are bundled in the Windows installer or portable archive; obtain those tools and their license notices from your Linux distribution. The bundled recovery helper uses the Python standard library.

@@ -93,6 +93,18 @@ def firmware_order(output):
     return m.group(1).upper().split(',')
 
 
+def on_disk(source, disk, nodes):
+    """Follow device-mapper parents too; a live system root is never writable."""
+    source = os.path.realpath(source)
+    seen = set()
+    while source and source not in seen:
+        if source == disk:
+            return True
+        seen.add(source)
+        source = nodes.get(source, {}).get('pkname')
+    return False
+
+
 def plan(root, esp, disk, mode, backup):
     if mode not in ('bios', 'uefi'):
         raise ValueError('Unsupported boot mode.')
@@ -109,8 +121,9 @@ def plan(root, esp, disk, mode, backup):
         raise ValueError('Root must be a plain partition with stable UUID and PARTUUID.')
     if part.get('pkname') != target['path']:
         raise ValueError('Root partition is not on the selected disk.')
-    running_node = by_path.get(running, {})
-    if running == source or running == target['path'] or running_node.get('pkname') == target['path']:
+    if running in by_path and by_path[running]['type'] not in ('part', 'disk', 'loop'):
+        raise ValueError('Running root uses a complex block layout; use a RAM-based live environment.')
+    if running == source or on_disk(running, target['path'], by_path):
         raise ValueError('Boot repair requires live media; the running system disk is protected.')
     if os.uname().machine != 'x86_64':
         raise ValueError('Only x86_64 live Linux is supported.')
@@ -130,8 +143,7 @@ def plan(root, esp, disk, mode, backup):
     backup = pathlib.Path(backup).resolve(strict=True)
     backup_mount = json.loads(run(['findmnt', '--json', '--target', str(backup),
                                  '--output', 'SOURCE']))['filesystems'][0]['source']
-    backup_node = by_path.get(os.path.realpath(backup_mount), {})
-    if backup_node.get('pkname') == target['path'] or os.path.realpath(backup_mount) == target['path']:
+    if on_disk(backup_mount, target['path'], by_path):
         raise ValueError('Backup must be on a different disk or live RAM filesystem.')
     if root == backup or root in backup.parents or not backup.is_dir():
         raise ValueError('Backup must be outside the repaired root.')

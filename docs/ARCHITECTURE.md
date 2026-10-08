@@ -47,3 +47,11 @@ Unreadable 1 MiB chunks are zero-filled and listed explicitly. Cancellation reta
 `RescueEngine` accepts a read-only transport. Each committed 1 MiB block is flushed and synchronized before its offset/hash/bad-sector row is flushed and synchronized to JSONL. On resume the header's source and destination identities are compared; all committed output bytes and range coverage are validated before modifying uncommitted tails. A final independent reread compares the whole output hash. A crash may lose the currently uncommitted block; it is reread, never assumed successful. Firmware/controller caching remains a physical limitation.
 
 No new third-party recovery binary/library is bundled. The implementation uses documented filesystem structures; upstream implementation code was not copied. See RESEARCH.md for structure references. Native parsers intentionally reject unsupported NTFS attribute-list extensions, encryption and compression rather than guessing physical runs.
+
+## Boot repair 0.5
+
+Offline Linux GRUB repair is a separate protected operation from external-media formatting. A Python helper validates selected ext4 mounts, partition UUIDs, target disk and live-root/backup separation, configuration hash, firmware state and a 180-second plan. It snapshots boot files with SHA-256 before grub-install. BIOS/MBR and UEFI without Secure Boot are supported; UEFI preserves existing firmware entries and adds a Windows chainloader when the existing loader survives.
+
+On Windows a PowerShell helper only prioritizes a pre-existing GRUB/shim firmware entry. It checks firmware state again, saves BCD/order backups and verifies the resulting order. It does not reinstall GRUB or touch partition contents. Unrecognized displayorder output is refused.
+
+Tests run the Linux helper inside a minimal QEMU live RAM environment, then boot the repaired disk through SeaBIOS or OVMF. Kernel handoff is distinct from full installed Windows or Secure Boot validation.
