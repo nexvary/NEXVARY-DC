@@ -69,6 +69,26 @@ QJsonObject storageProcess(const QJsonObject &request,std::atomic_bool *cancel=n
  Q_UNUSED(request);Q_UNUSED(cancel);return fail("Storage management is implemented for Windows in this release.");
 #endif
 }
+QJsonObject bootRepairProcess(const QJsonObject &request) {
+#ifdef Q_OS_LINUX
+ QTemporaryDir dir;
+ if(!dir.isValid())return fail("Cannot stage boot repair helper.");
+ QFile helper(":/storage/boot_repair.py");
+ if(!helper.copy(dir.filePath("boot_repair.py")))return fail("Boot repair helper unavailable.");
+ QFile input(dir.filePath("request.json"));
+ if(!input.open(QIODevice::WriteOnly))return fail("Cannot stage repair request.");
+ input.write(QJsonDocument(request).toJson(QJsonDocument::Compact));input.close();
+ QProcess p;p.start("/usr/bin/python3",{dir.filePath("boot_repair.py"),"--request",input.fileName()});
+ if(!p.waitForStarted(5000))return fail("Python 3 is required in the live Linux environment.");
+ // Do not kill GRUB halfway through writes. Helper commands have bounded waits.
+ p.waitForFinished(-1);
+ auto doc=QJsonDocument::fromJson(p.readAllStandardOutput().trimmed());
+ if(p.exitStatus()!=QProcess::NormalExit||!doc.isObject())return fail("Boot helper failed: "+QString::fromUtf8(p.readAllStandardError()).left(2000));
+ return doc.object();
+#else
+ Q_UNUSED(request);return fail("GRUB repair runs from a Linux live environment. Windows does not repair Linux boot loaders in this release.");
+#endif
+}
 }
 Controller::Controller(QObject *parent):QObject(parent) {
  auto data=QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);QDir().mkpath(data);
@@ -101,11 +121,23 @@ Controller::Controller(QObject *parent):QObject(parent) {
 Controller::~Controller(){m_cancel=true;m_watcher.waitForFinished();m_db.close();m_db=QSqlDatabase();QSqlDatabase::removeDatabase("dc-history");}
 void Controller::start(const QString &name,Work work) {
  if(m_busy)return;
- m_mutating=name.startsWith("storage_");
+ m_mutating=name.startsWith("storage_")||name=="boot_repair";
  m_operation=name;m_cancel=false;m_busy=true;m_progress=0;
  m_report=QString::fromUtf8(QJsonDocument(QJsonObject{{"status","running"},{"operation",name}}).toJson(QJsonDocument::Indented));
  m_result = QVariantMap{{"status","running"},{"operation",name}};
  emit reportChanged();emit stateChanged();m_watcher.setFuture(QtConcurrent::run(std::move(work)));
+}
+void Controller::prepareBootRepair(const QString &root,const QString &esp,const QString &disk,const QString &mode,const QString &backup) {
+ if(m_busy)return;
+ QJsonObject request{{"action","plan"},{"root",root},{"esp",esp},{"disk",disk},{"mode",mode},{"backup",backup}};
+ start("boot_repair_plan",[request]{return bootRepairProcess(request);});
+}
+void Controller::executeBootRepair(const QString &confirmation) {
+ if(m_busy)return;
+ const auto plan=QJsonObject::fromVariantMap(m_result.value("plan").toMap());
+ if(plan.isEmpty()){setResult(fail("Inspect the boot repair plan first."));return;}
+ QJsonObject request{{"action","apply"},{"plan",plan},{"confirmation",confirmation}};
+ start("boot_repair",[request]{return bootRepairProcess(request);});
 }
 void Controller::refresh() {
  if(m_busy)return;

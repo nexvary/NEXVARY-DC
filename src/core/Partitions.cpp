@@ -9,29 +9,33 @@ quint32 crc32(const QByteArray &b){quint32 c=~0u;for(uchar x:b){c^=x;for(int i=0
 bool extended(int t){return t==5||t==15||t==0x85;}
 }
 QList<ImageVolume> imageVolumes(QFile &f,QStringList &warnings){
- QList<ImageVolume> out{{0,f.size(),"volume"}};const quint64 sectors=quint64(f.size()/512);
+ QList<ImageVolume> out{{0,f.size(),"volume"}};quint64 sectorBytes=512,sectors=quint64(f.size()/512);
  auto add=[&](quint64 lba,quint64 count,const QString &scheme){
   if(!lba||!count||lba>=sectors||count>sectors-lba){warnings<<"Partition outside image";return;}
-  for(const auto &v:out)if(v.offset>0&&qint64(lba*512)<v.offset+v.length&&v.offset<qint64((lba+count)*512)){warnings<<"Overlapping partition extent rejected";return;}
-  out.append({qint64(lba*512),qint64(count*512),scheme});
+  for(const auto &v:out)if(v.offset>0&&qint64(lba*sectorBytes)<v.offset+v.length&&v.offset<qint64((lba+count)*sectorBytes)){warnings<<"Overlapping partition extent rejected";return;}
+  out.append({qint64(lba*sectorBytes),qint64(count*sectorBytes),scheme});
  };
  if(!f.seek(0))return out;auto m=f.read(512);if(m.size()!=512||uchar(m[510])!=85||uchar(m[511])!=170)return out;
  bool protective=false;for(int p=446;p<510;p+=16)protective|=uchar(m[p+4])==0xee;
  if(protective){
   // Try primary, then backup header. Both header and table CRC are mandatory.
   bool accepted=false;
+  for(quint64 bytes:QList<quint64>{512,4096}){
+   sectorBytes=bytes;sectors=quint64(f.size()/qint64(bytes));
   for(quint64 headerLba:QList<quint64>{1,sectors?sectors-1:0}){
-   if(!f.seek(qint64(headerLba*512)))continue;auto h=f.read(512);
-   if(h.size()!=512||h.left(8)!="EFI PART"||le32(h,8)!=0x10000||le32(h,20)!=0)continue;
-   auto hs=le32(h,12),expected=le32(h,16);if(hs<92||hs>512)continue;
+   if(!f.seek(qint64(headerLba*sectorBytes)))continue;auto h=f.read(qint64(sectorBytes));
+   if(quint64(h.size())!=sectorBytes||h.left(8)!="EFI PART"||le32(h,8)!=0x10000||le32(h,20)!=0)continue;
+   auto hs=le32(h,12),expected=le32(h,16);if(hs<92||hs>sectorBytes)continue;
    auto header=h.left(hs);for(int j=16;j<20;++j)header[j]=0;
    if(crc32(header)!=expected||le64(h,24)!=headerLba)continue;
    auto lba=le64(h,72);auto n=le32(h,80),size=le32(h,84);quint64 len=quint64(n)*size;
-   if(!n||n>1048576||size<128||size>4096||size%128||len>64*1024*1024||lba>=sectors||len>quint64(f.size())-lba*512)continue;
-   if(!f.seek(qint64(lba*512)))continue;auto table=f.read(qint64(len));if(quint64(table.size())!=len||crc32(table)!=le32(h,88))continue;
+   if(!n||n>1048576||size<128||size>4096||size%128||len>64*1024*1024||lba>=sectors||len>quint64(f.size())-lba*sectorBytes)continue;
+   if(!f.seek(qint64(lba*sectorBytes)))continue;auto table=f.read(qint64(len));if(quint64(table.size())!=len||crc32(table)!=le32(h,88))continue;
    const auto first=le64(h,40),last=le64(h,48);if(first>last||last>=sectors)continue;
    for(quint32 i=0;i<n;++i){int p=int(quint64(i)*size);if(table.mid(p,16)==QByteArray(16,0))continue;auto a=le64(table,p+32),b=le64(table,p+40);if(a<first||b>last||b<a){warnings<<"Invalid GPT extent";continue;}add(a,b-a+1,"GPT");}
    accepted=true;if(headerLba!=1)warnings<<"Using backup GPT; primary invalid";break;
+  }
+   if(accepted)break;
   }
   if(!accepted)warnings<<"GPT header/table checksum or bounds invalid";
   return out; // Never reinterpret protective/hybrid entries after a rejected GPT.

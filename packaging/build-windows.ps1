@@ -31,3 +31,6 @@ if(Test-Path $qtLicense){Copy-Item $qtLicense (Join-Path $OutputDir 'licenses/Qt
 
 New-Item -ItemType Directory -Force (Join-Path $OutputDir 'licenses/Qt') | Out-Null
 Copy-Item packaging/Qt-*.txt (Join-Path $OutputDir 'licenses/Qt') -Force
+
+New-Item -ItemType Directory -Force (Join-Path $OutputDir "recovery-tools") | Out-Null
+Copy-Item scripts/boot_repair.py (Join-Path $OutputDir "recovery-tools/boot_repair.py") -Force

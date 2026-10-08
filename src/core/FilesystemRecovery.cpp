@@ -200,11 +200,14 @@ bool fat32(Image &im,Output &out){
   while(valid(c)&&out.running()){if(seen.contains(c)||seen.size()>=out.options.maxRecords)return Stream{};seen.insert(c);s.runs<<Run{off(c),cluster};n+=cluster;auto link=next(c);
    if(!directory&&n>=size){if(link<0x0ffffff8)return Stream{};s.size=s.initialized=size;s.valid=true;return s;}
    if(link>=0x0ffffff8){if(directory){s.size=s.initialized=n;s.valid=true;}return s;}c=link;}return Stream{};};
- struct Entry {QString name,path;quint32 first;quint32 size;};struct Dir {quint32 first;QString path;};
+ struct Entry {QString name,path;quint32 first;quint32 size;QSet<quint32> parentClusters;};struct Dir {quint32 first;QString path;bool deleted=false;QSet<quint32> parentClusters;};
  QList<Dir> queue{{root,"FAT32"}};QSet<quint32> dirs,owned;QList<Entry> deleted;quint64 visited=0;
  while(!queue.isEmpty()&&out.running()){
   auto dir=queue.takeFirst();if(dirs.contains(dir.first))continue;dirs.insert(dir.first);auto stream=chain(dir.first,0,true);if(!stream.valid){out.issue(dir.path,"Invalid directory allocation");continue;}
-  for(const auto &r:stream.runs)owned.insert(quint32((r.offset-data)/cluster)+2);
+  if(dir.deleted){
+   auto dot=im.read(stream,0,64);if(dot.size()!=64||dot.left(11)!=QByteArray(".          ")||dot.mid(32,11)!=QByteArray("..         ")||!(uchar(dot[11])&16)||!(uchar(dot[43])&16)||(((quint32(u16(dot,20))<<16)|u16(dot,26))&0x0fffffff)!=dir.first){out.issue(dir.path,"Deleted directory lacks valid dot entries and retained chain");continue;}
+   for(const auto &r:stream.runs)dir.parentClusters.insert(quint32((r.offset-data)/cluster)+2);
+  }else for(const auto &r:stream.runs)owned.insert(quint32((r.offset-data)/cluster)+2);
   QList<QByteArray> lfn;
   for(qint64 p=0;p+32<=stream.size&&out.running();p+=32){if(++visited>quint64(out.options.maxRecords)){out.status="partial";out.issue(dir.path,"Directory entry limit");break;}
    auto e=im.read(stream,p,32);if(e.size()!=32)break;int marker=uchar(e[0]),attr=uchar(e[11]);if(!marker)break;
@@ -219,13 +222,13 @@ bool fat32(Image &im,Output &out){
    if(attr&8||marker=='.')continue;
    if(name.isEmpty()){name=QString::fromLatin1(e.left(8)).trimmed();if(isDeleted)name[0]='_';auto ext=QString::fromLatin1(e.mid(8,3)).trimmed();if(!ext.isEmpty())name+='.'+ext;}
    auto first=((quint32(u16(e,20))<<16)|u16(e,26))&0x0fffffff;auto size=u32(e,28);
-   if(attr&16){if(isDeleted){out.issue(name,"Deleted FAT32 directory chain is not reliable");continue;}if(valid(first))queue.append({first,dir.path+"/"+safe(name)});continue;}
-   if(isDeleted){deleted.append({name,dir.path,first,size});continue;}
+   if(attr&16){bool gone=isDeleted||dir.deleted;if(valid(first)&&(!gone||next(first)>=2))queue.append({first,dir.path+"/"+safe(name),gone,dir.parentClusters});else if(gone)out.issue(name,"Deleted directory FAT chain was cleared or invalid");continue;}
+   if(isDeleted||dir.deleted){deleted.append({name,dir.path,first,size,dir.parentClusters});continue;}
    auto allocated=chain(first,size,false);if(!allocated.valid&&size){out.issue(name,"Live allocation corrupt; refusing deleted recovery for this volume");return true;}
    for(const auto &r:allocated.runs)owned.insert(quint32((r.offset-data)/cluster)+2);
   }
  }
- for(const auto &e:deleted){if(!out.running())break;Stream s;bool candidate=true;
+ for(const auto &e:deleted){if(!out.running())break;bool parentConflict=false;for(auto c:e.parentClusters)if(owned.contains(c))parentConflict=true;if(parentConflict){out.issue(e.name,"Deleted parent directory overlaps live allocation");continue;}Stream s;bool candidate=true;
   if(!e.size){s.valid=true;s.resident=QByteArray("");}
   else if(!valid(e.first)){out.issue(e.name,"Invalid first cluster");continue;}
   else if(next(e.first)==0){auto n=(quint64(e.size)+cluster-1)/cluster;if(n>quint64(clusters)+2-e.first){out.issue(e.name,"Extent outside volume");continue;}bool free=true;

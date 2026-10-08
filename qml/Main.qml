@@ -5,7 +5,7 @@ import QtQuick.Dialogs
 ApplicationWindow {
  id: root
  width:1280;height:850;minimumWidth:980;minimumHeight:700;visible:true
- title:"NEXVARY Disk Care · 0.4.0";color:"#080f17"
+ title:"NEXVARY Disk Care · 0.5.0";color:"#080f17"
  property bool arabic:true
  property int page:0
  property int diskIndex:-1
@@ -19,11 +19,11 @@ ApplicationWindow {
  property bool confirmAck:false
  property alias confirmation:confirmDialog
  property alias exportDialog:reportDialog
- property var names:[t("مركز التخزين","Storage center"),t("التشخيص وSMART","Diagnostics & SMART"),t("إنقاذ البيانات","Data rescue"),t("الصيانة والإصلاح","Maintenance & repair"),t("الفلاشات والكروت","Flash & cards"),t("اختبار السعة","Capacity test"),t("التقارير والسجل","Reports & history"),t("الفورمات والتقسيم","Format & partitions"),t("وسيط تثبيت الأنظمة","OS installation media"),t("حول المطور","About developer")]
+ property var names:[t("مركز التخزين","Storage center"),t("التشخيص وSMART","Diagnostics & SMART"),t("إنقاذ البيانات","Data rescue"),t("الصيانة والإصلاح","Maintenance & repair"),t("الفلاشات والكروت","Flash & cards"),t("اختبار السعة","Capacity test"),t("التقارير والسجل","Reports & history"),t("الفورمات والتقسيم","Format & partitions"),t("الإقلاع والتثبيت","Boot & installation"),t("حول المطور","About developer")]
  property var iconNames:["overview","disk","rescue","maintenance","usb","capacity","reports","partition","boot","developer"]
  function t(ar,en){return arabic?ar:en}
  function size(bytes){return (Number(bytes||0)/1073741824).toFixed(2)+" GiB"}
- function operationName(value){const m={disk_discovery:t("اكتشاف الأقراص","Disk discovery"),smart_read:t("قراءة صحة القرص","Disk health read"),image_read:t("فحص الصورة","Image inspection"),image_copy:t("نسخ الصورة والتحقق","Image copy & verification"),surface_read:t("فحص قراءة السطح","Surface read scan"),media_rescue:t("إنشاء صورة إنقاذ","Media rescue image"),directory_capacity_test:t("اختبار كتابة وقراءة المساحة","Storage write/read test"),format:t("فورمات القسم","Partition format"),delete:t("حذف القسم","Partition deletion"),create:t("إنشاء قسم","Partition creation"),layout:t("إنشاء تقسيم جديد","New partition layout"),repair:t("إصلاح نظام الملفات","Filesystem repair"),check:t("فحص نظام الملفات","Filesystem scan"),filesystem_recovery:root.t("استعادة بيانات نظام الملفات","Filesystem metadata recovery"),fat32_recovery:t("استعادة ملفات FAT32 المحذوفة","FAT32 deleted-file recovery"),file_recovery:t("استعادة الصور من صورة الإنقاذ","Recover photos from rescue image"),linux_usb:t("تجهيز إقلاع Linux","Linux boot media"),windows_bios_usb:t("تجهيز Windows BIOS/UEFI","Windows BIOS/UEFI media"),windows_usb:t("تجهيز مثبت Windows","Windows installation media")};return m[value]||value||"—"}
+ function operationName(value){const m={boot_repair:t("إصلاح GRUB","GRUB repair"),boot_repair_plan:t("خطة إصلاح الإقلاع","Boot repair plan"),disk_discovery:t("اكتشاف الأقراص","Disk discovery"),smart_read:t("قراءة صحة القرص","Disk health read"),image_read:t("فحص الصورة","Image inspection"),image_copy:t("نسخ الصورة والتحقق","Image copy & verification"),surface_read:t("فحص قراءة السطح","Surface read scan"),media_rescue:t("إنشاء صورة إنقاذ","Media rescue image"),directory_capacity_test:t("اختبار كتابة وقراءة المساحة","Storage write/read test"),format:t("فورمات القسم","Partition format"),delete:t("حذف القسم","Partition deletion"),create:t("إنشاء قسم","Partition creation"),layout:t("إنشاء تقسيم جديد","New partition layout"),repair:t("إصلاح نظام الملفات","Filesystem repair"),check:t("فحص نظام الملفات","Filesystem scan"),filesystem_recovery:root.t("استعادة بيانات نظام الملفات","Filesystem metadata recovery"),fat32_recovery:t("استعادة ملفات FAT32 المحذوفة","FAT32 deleted-file recovery"),file_recovery:t("استعادة الصور من صورة الإنقاذ","Recover photos from rescue image"),linux_usb:t("تجهيز إقلاع Linux","Linux boot media"),windows_bios_usb:t("تجهيز Windows BIOS/UEFI","Windows BIOS/UEFI media"),windows_usb:t("تجهيز مثبت Windows","Windows installation media")};return m[value]||value||"—"}
  function message(s){
   if(!arabic)return s
   if(s.indexOf("Administrator")>=0)return "تحتاج العملية صلاحيات المسؤول. استخدم «تشغيل كمسؤول» ثم اختر القرص وأكد العملية من جديد."
@@ -83,7 +83,7 @@ ApplicationWindow {
     Item {Layout.fillHeight:true}
     ActionButton {visible:backend.windows&&!backend.administrator;Layout.fillWidth:true;implicitHeight:34;text:root.t("تشغيل كمسؤول","Run as administrator");enabled:!backend.busy;onClicked:if(!backend.relaunchAdministrator())root.notice=root.t("لم تُمنح صلاحيات المسؤول؛ لم يبدأ أي إجراء","Administrator permission was not granted; no operation started")}
     Label {visible:!backend.windows||backend.administrator;text:backend.administrator?root.t("صلاحيات مسؤول","Administrator"):root.t("وضع المستخدم","User mode");color:backend.administrator?"#efbf78":"#74c7a7";font.pixelSize:11}
-    RowLayout {Label {text:"0.4.0";color:"#7999b0"}Item {Layout.fillWidth:true}ActionButton {text:root.arabic?"English":"العربية";implicitWidth:102;implicitHeight:34;onClicked:root.arabic=!root.arabic}}
+    RowLayout {Label {text:"0.5.0";color:"#7999b0"}Item {Layout.fillWidth:true}ActionButton {text:root.arabic?"English":"العربية";implicitWidth:102;implicitHeight:34;onClicked:root.arabic=!root.arabic}}
    }
   }
   ColumnLayout {Layout.fillWidth:true;Layout.fillHeight:true;Layout.margins:20;spacing:12
@@ -155,6 +155,7 @@ ApplicationWindow {
       }
      }
      StorageWorkspace {app:root;visible:root.page===3||root.page===4||root.page===7||root.page===8;bootMode:root.page===8;Layout.fillWidth:true}
+     BootRepairWorkspace {app:root;visible:root.page===8;Layout.fillWidth:true}
      Panel {visible:root.page===3;Layout.fillWidth:true
       ColumnLayout {anchors.fill:parent;spacing:10;Label {text:root.t("Firmware ومعالجة التلف المادي","Firmware and physical damage");font.bold:true;font.pixelSize:18;color:"#e6c382"}Label {text:root.t("نسخة Firmware تظهر في نتيجة SMART عند دعم الجهاز. تحديثه يحتاج حزمة متوافقة مع الموديل من الشركة المصنّعة؛ لا يوجد تحديث عام لكل الأقراص. إصلاح نظام الملفات لا يعالج تلف السطح المادي.","Firmware version is shown in SMART when supported. Updating requires a model-matched manufacturer package; no universal drive update exists. Filesystem repair does not repair physical surface damage.");color:"#b6cbdb";Layout.fillWidth:true;wrapMode:Text.WordWrap}ActionButton {text:root.t("قراءة بيانات الجهاز","Read drive details");enabled:!backend.busy&&!!root.selectedDisk.device;onClicked:backend.inspectHealth(root.selectedDisk.device)}}
      }

@@ -41,6 +41,8 @@ public:
  Q_INVOKABLE void scanSurface(const QString &device,bool acknowledged);
  Q_INVOKABLE void rescueDisk(const QString &device,const QString &destination,bool acknowledged,bool resume=false,int sectorBytes=512,int retries=1);
  Q_INVOKABLE void recoverImage(const QString &source,const QString &directory,int mode=0,int maxFiles=100000);
+ Q_INVOKABLE void prepareBootRepair(const QString &root,const QString &esp,const QString &disk,const QString &mode,const QString &backup);
+ Q_INVOKABLE void executeBootRepair(const QString &confirmation);
  Q_INVOKABLE void scanImage(const QString &path);
  Q_INVOKABLE void copyImage(const QString &source,const QString &destination);
  Q_INVOKABLE void testCapacity(const QString &directory,int mib,bool acknowledged);
