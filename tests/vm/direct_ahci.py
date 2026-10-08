@@ -86,7 +86,7 @@ log=out/'serial.txt'
 with log.open('wb') as stream:
     process=subprocess.Popen(['qemu-system-x86_64','-machine','q35','-accel','tcg','-m','1024','-display','none',
          '-serial','stdio','-no-reboot','-nic','none','-kernel',str(kernel),'-initrd',str(initrd),
-         '-append','console=ttyS0 rdinit=/init iommu=off libata.force=1:disable',
+         '-append','console=ttyS0 rdinit=/init iommu=off iomem=relaxed libata.force=1:disable',
          '-drive','if=none,id=source,format=raw,readonly=on,file='+str(source),
          '-device','ide-hd,drive=source,bus=ide.0,serial=DC_TEST_SERIAL'],stdout=stream,stderr=subprocess.STDOUT)
     try:

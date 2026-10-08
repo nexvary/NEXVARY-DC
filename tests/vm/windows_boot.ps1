@@ -77,7 +77,7 @@ shutdown /s /t 5
 $qemu='C:\Program Files\qemu\qemu-system-x86_64.exe'
 if(!(Test-Path $qemu)){throw 'QEMU missing'}
 $serial=Join-Path $out 'serial.txt'
-$arguments=@('-machine','q35,smm=on','-accel','tcg','-m','4096','-smp','2','-display','none','-serial',"file:$serial",'-nic','none','-drive',"file=$vhd,format=vpc,if=ide",'-rtc','base=utc')
+$arguments=@('-machine','q35,smm=on','-accel','tcg','-cpu','max','-m','4096','-smp','2','-display','none','-serial',"file:$serial",'-nic','none','-drive',"file=$vhd,format=vpc,if=ide",'-rtc','base=utc')
 if($Mode -ne 'bios'){
  $code=(Resolve-Path 'out/firmware/OVMF_CODE_4M.secboot.fd').Path
  $vars=Join-Path $out 'vars.fd'
