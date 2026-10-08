@@ -42,8 +42,10 @@ Windows can restore priority of an existing GRUB/shim UEFI entry, with BCD/firmw
 
 Selective retry reads only previously unreadable disk sectors after full prior-image/map validation; original evidence is preserved and a separate full-size image is required.
 SMART capability reports describe observed protocol/model/sector data and explicitly report no certified firmware repair profiles.
-OpenSuperClone is evaluated separately on Linux; it is not bundled or linked into this Windows package.
+The restricted OpenSuperClone engine is distributed separately for Linux with corresponding source/license/patch; it is not linked into the Windows executable.
 
 Separate expert Linux direct-AHCI helper: exact source identity, read-only commands and resumable SHA-256 map.
 Optional identified USBRelay for source-only +5V/+12V; electrical wiring requires physical testing.
 Windows bundles helper sources/instructions, not a native AHCI transport. No certified firmware/SA/translator family.
+
+Release qualification requires installed Windows and production-prepared virtual USB boot to Windows PE in BIOS/UEFI/UEFI Secure Boot for one pinned evaluation ISO; this is not universal Secure Boot certification.

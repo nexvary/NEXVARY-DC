@@ -1,4 +1,6 @@
-# Verification — 0.6.0
+# Verification — 0.7.0
+
+Historical 0.6.0 observations below are retained; the 0.7.0 qualification section supersedes their Windows boot limitation.
 
 Release publication is gated on Windows 2022 and Ubuntu 24.04 builds/tests for the **same commit**. `release-manifest.json` records its SHA and Actions run. A local source tree or a successful compile alone is not release evidence.
 
@@ -57,3 +59,7 @@ Windows visual proof uses the native Windows platform, not the font-less offscre
 ## 0.7.0 direct AHCI qualification
 
 Nine additional deterministic Python tests cover streaming SHA-256, cancellation/resume, crash tails, bad-sector fallback/retry budget, corruption, changed identities, image bounds, insufficient space, OS-visible controller refusal and USBRelay transfer errors/restoration. A separate QEMU AHCI test performs actual MMIO/DMA reads through the restricted engine and checks SHA-256 and resumed output. Source is attached read-only on the host. Physical SATA timing, DMA compatibility and electrical relay operation remain hardware tests. No firmware repair family is certified; release qualification requires installed Windows evaluation boot in BIOS, UEFI and UEFI Secure Boot with state confirmation inside the guest. The application's Windows USB creation remains without an end-to-end VM boot test.
+
+## 0.7.0 Windows production USB qualification
+
+Release publication additionally requires BIOS, UEFI and UEFI Secure Boot guests using one pinned official Windows 11 LTSC evaluation ISO. Each reaches installed Windows first logon, runs the production storage backend on an isolated emulated USB, rejects the system disk, stale serial and a 1 GiB target before mutation, verifies copied bytes, then boots the prepared USB to Windows PE. A test-only batch-shell hook in boot.wim reports kernel/firmware state over serial; signed EFI executables remain unchanged. All mode results must report success in the release manifest. Fixture presence alone is not proof of a successful run. This does not certify all Windows ISOs, physical firmware or Secure Boot key/revocation databases.
