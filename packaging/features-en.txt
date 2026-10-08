@@ -11,7 +11,11 @@ INCLUDED FEATURES
 - External USB/SD/MMC partition formatting: exFAT, NTFS, FAT32
 - Create/delete partitions and rebuild GPT/MBR layouts
 - Filesystem scan and repair using Windows storage services
-- Windows x64 UEFI installation media from a compatible ISO
+- Windows x64 UEFI/GPT or BIOS + UEFI/MBR installation media
+- Hybrid Linux ISO writing with volume locking and SHA-256 readback
+- PNG/JPEG signature carving from rescue images
+- Contiguous deleted FAT32 files from volume images or primary MBR partitions
+- Separate recovery folders with manifests, hashes and verified file copies
 - Large install.wim splitting via DISM; copied-file SHA-256 readback
 - Local operation history and exportable JSON reports
 - Arabic RTL / English interface and developer information
@@ -24,9 +28,8 @@ IMPORTANT SCOPE
 GPT/MBR rebuilding and boot-media creation erase the target disk.
 Capacity tests cover tested space, not exact physical NAND capacity.
 Rescue records 1 MiB unreadable chunks as zeros and cannot restore those bytes.
-Firmware flashing, physical surface repair, BIOS/Linux boot media and deleted-file
-recovery are not shipped. Physical boot and disk repair have not been hardware-tested.
-
-PNG/JPEG carving from rescue images with manifests, hashes and readback checks. Original filenames and folders are not restored.
-Windows x64 BIOS/UEFI media and hybrid Linux ISO writing with explicit confirmation, volume locking and readback verification. Physical boot requires testing.
-Deleted contiguous FAT32 file recovery from volume images or primary MBR partitions, with free-cluster checks, manifests and file hashes. Overwritten content cannot be guaranteed.
+Firmware flashing and physical surface repair are not shipped. Physical boot and
+disk repair have not been hardware-tested. Linux boot support depends on its hybrid ISO.
+NTFS/exFAT undelete and fragmented-file recovery are unsupported. JPEG and FAT32
+candidates require content review; copy hashes do not prove original data integrity.
+Original long names and folder hierarchy are not reconstructed. Limits: 64 MiB/file, 10000 files.

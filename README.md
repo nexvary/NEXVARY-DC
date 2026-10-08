@@ -14,7 +14,7 @@ C++20 / Qt 6 desktop storage toolkit with Arabic RTL and English. Original color
 - Async single active job, progress, SQLite history and report export. JSON is hidden behind technical details.
 
 ## Supported limits
-Internal disks cannot be formatted by this release. GPT/MBR rebuild erases all target data. Linux provides diagnostics/image operations and read-only surface scanning; physical rescue destination mapping and storage writes currently require Windows. Surface/rescue unreadable-range granularity is 1 MiB and auto-resume is not implemented. Copy readback can be affected by caching; it is not a physical-media certification. Exact NAND capacity, deleted-file recovery, physical surface regeneration, vendor firmware flashing, BIOS boot and Linux ISO writing are not shipped.
+Internal disks cannot be formatted by this release. GPT/MBR rebuild erases all target data. Linux provides diagnostics/image operations and read-only surface scanning; physical rescue destination mapping and storage writes currently require Windows. Surface/rescue unreadable-range granularity is 1 MiB and auto-resume is not implemented. Copy readback can be affected by caching; it is not a physical-media certification. Exact NAND capacity, NTFS/exFAT undelete, fragmented-file recovery, physical surface regeneration and vendor firmware flashing are not shipped. The supported recovery and BIOS/hybrid Linux media paths are described below.
 
 ## Build
 Qt **6.8.x** development package (Core, Concurrent, Gui, Qml, Quick, QuickControls2, Sql, Test), CMake >=3.24 and a C++20 compiler.
