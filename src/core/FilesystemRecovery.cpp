@@ -94,9 +94,10 @@ bool ntfs(Image &im,Output &out){
  int sector=u16(boot,11),spc=uchar(boot[13]);if(!QList<int>{512,1024,2048,4096}.contains(sector)||!spc||(spc&(spc-1))||spc>128){out.issue("NTFS","Invalid geometry");return true;}
  qint64 cluster=qint64(sector)*spc;auto sectors=u64(boot,40),mftCluster=u64(boot,48);int code=qint8(boot[64]);qint64 record=code<0?(code>=-16?qint64(1)<<(-code):0):qint64(code)*cluster;
  if(!sectors||sectors>quint64(im.v.length/sector)||record<512||record>65536||record%sector||mftCluster>=sectors/spc){out.issue("NTFS","Invalid MFT geometry");return true;}
+ im.v.length=qint64(sectors)*sector;
  auto first=im.read(qint64(mftCluster)*cluster,record);if(!fixup(first,sector)){out.issue("$MFT","Invalid fixup");return true;}bool ok=false;auto attrs=attributes(first,ok);Stream mft;
  if(ok)for(const auto &a:attrs){if(u32(a,0)==0x20){out.issue("$MFT","MFT attribute-list extensions unsupported");return true;}if(u32(a,0)==0x80&&a[9]==0)mft=ntStream(a,cluster,im.v.length);}
- if(!mft.valid||mft.size%record){out.issue("$MFT","Missing or invalid data runlist");return true;}
+ if(!mft.valid||mft.initialized!=mft.size||mft.size%record){out.issue("$MFT","Missing or invalid data runlist");return true;}
  auto get=[&](quint64 id){auto r=im.read(mft,qint64(id)*record,record);if(!fixup(r,sector))r.clear();return r;};
  Stream bitmap;auto br=get(6);if(!br.isEmpty()){auto ba=attributes(br,ok);if(ok)for(const auto &a:ba)if(u32(a,0)==0x80&&a[9]==0)bitmap=ntStream(a,cluster,im.v.length);}
  const auto count=qMin<qint64>(mft.size/record,out.options.maxRecords);if(count<mft.size/record){out.status="partial";out.issue("$MFT","Configured MFT record limit reached");return true;}
@@ -111,7 +112,7 @@ bool ntfs(Image &im,Output &out){
   for(const auto &a:as){if(u32(a,0)==0x20)extended=true;if(u32(a,0)==0x80&&a[9]==0)data=ntStream(a,cluster,im.v.length);}
   if(extended||!data.valid){out.issue(name.name,"Attribute-list extension, compression, encryption or invalid/missing data runs");continue;}
   bool free=true;if(data.resident.isNull()){
-   if(!bitmap.valid){out.issue(name.name,"Allocation bitmap unavailable");continue;}
+   if(!bitmap.valid||bitmap.initialized!=bitmap.size){out.issue(name.name,"Allocation bitmap unavailable");continue;}
    for(const auto &run:data.runs){if(run.offset<0)continue;quint64 c=run.offset/cluster,n=run.length/cluster;
     for(quint64 j=0;j<n&&out.running();){auto take=qMin<quint64>(n-j,32768);auto bit=c+j;auto b=im.read(bitmap,bit/8,(bit%8+take+7)/8);if(b.size()!=qint64((bit%8+take+7)/8)){free=false;break;}
      for(quint64 k=0;k<take;++k)if(uchar(b[(bit%8+k)/8])&(1<<((bit+k)%8))){free=false;break;}if(!free)break;j+=take;}if(!free)break;}
@@ -129,6 +130,7 @@ bool exfat(Image &im,Output &out){
  int shift=uchar(b[108]),cshift=uchar(b[109]),nf=uchar(b[110]);if(shift<9||shift>12||cshift>25-shift||(nf!=1&&nf!=2)){out.issue("exFAT","Invalid geometry");return true;}
  qint64 sector=qint64(1)<<shift,cluster=sector<<cshift;quint64 sectors=u64(b,72);auto fat=u32(b,80),fatSize=u32(b,84),heap=u32(b,88),clusters=u32(b,92),root=u32(b,96);int active=(u16(b,106)&1);
  if(!sectors||sectors>quint64(im.v.length/sector)||!clusters||clusters>0xfffffff5||active>=nf||fat<24||quint64(fat)+quint64(nf)*fatSize>heap||quint64(heap)>=sectors||quint64(clusters)*cluster>(sectors-heap)*sector||quint64(clusters+2)*4>quint64(fatSize)*sector){out.issue("exFAT","Invalid volume bounds");return true;}
+ im.v.length=qint64(sectors)*sector;
  auto boot=im.read(0,11*sector),sum=im.read(11*sector,sector);quint32 checksum=0;
  if(boot.size()!=11*sector||sum.size()!=sector){out.issue("exFAT","Truncated boot region");return true;}
  for(int i=0;i<boot.size();++i)if(i!=106&&i!=107&&i!=112)checksum=((checksum&1)?0x80000000:0)+(checksum>>1)+uchar(boot[i]);
@@ -167,6 +169,7 @@ bool exfat(Image &im,Output &out){
    int names=uchar(set[35]);if(names<1||names>(secondary-1)*15){out.issue(dir.path,"Invalid name length");continue;}QString name;for(int j=2;j<=secondary;++j)name+=utf16(set,j*32+2,qMin(15,names-int(name.size())));
    auto size=u64(set,56),initialized=u64(set,40);bool directory=u16(set,4)&16;
    if(size>quint64(im.v.length)||initialized>size){out.issue(name,"Invalid stream size");continue;}
+   if(directory&&initialized!=size){out.issue(name,"Uninitialized directory stream");continue;}
    auto stream=chain(u32(set,52),qint64(size),uchar(set[33])&2,directory);stream.initialized=qint64(initialized);
    if(!stream.valid){out.issue(name,"Missing, looping or invalid allocation chain");pos+=secondary*32;continue;}
    if(deleted&&!freeStream(stream)){out.issue(name,"Data clusters reallocated or bitmap unreadable");pos+=secondary*32;continue;}

@@ -12,7 +12,7 @@ QList<ImageVolume> imageVolumes(QFile &f,QStringList &warnings){
  QList<ImageVolume> out{{0,f.size(),"volume"}};const quint64 sectors=quint64(f.size()/512);
  auto add=[&](quint64 lba,quint64 count,const QString &scheme){
   if(!lba||!count||lba>=sectors||count>sectors-lba){warnings<<"Partition outside image";return;}
-  for(const auto &v:out)if(v.offset==qint64(lba*512))return;
+  for(const auto &v:out)if(v.offset>0&&qint64(lba*512)<v.offset+v.length&&v.offset<qint64((lba+count)*512)){warnings<<"Overlapping partition extent rejected";return;}
   out.append({qint64(lba*512),qint64(count*512),scheme});
  };
  if(!f.seek(0))return out;auto m=f.read(512);if(m.size()!=512||uchar(m[510])!=85||uchar(m[511])!=170)return out;
@@ -22,7 +22,7 @@ QList<ImageVolume> imageVolumes(QFile &f,QStringList &warnings){
   bool accepted=false;
   for(quint64 headerLba:QList<quint64>{1,sectors?sectors-1:0}){
    if(!f.seek(qint64(headerLba*512)))continue;auto h=f.read(512);
-   if(h.size()!=512||h.left(8)!="EFI PART")continue;
+   if(h.size()!=512||h.left(8)!="EFI PART"||le32(h,8)!=0x10000||le32(h,20)!=0)continue;
    auto hs=le32(h,12),expected=le32(h,16);if(hs<92||hs>512)continue;
    auto header=h.left(hs);for(int j=16;j<20;++j)header[j]=0;
    if(crc32(header)!=expected||le64(h,24)!=headerLba)continue;

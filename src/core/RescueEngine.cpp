@@ -39,8 +39,8 @@ QJsonObject rescueStream(RescueSource &source,const QString &destination,const R
  if(source.bytes<=0||!QList<int>{512,4096}.contains(options.sectorBytes)||source.bytes%options.sectorBytes||options.retries<0||options.retries>5||source.identity.isEmpty()||!source.read)return fail("Invalid source identity, size, sector or retry settings.");
  QFileInfo info(destination);if(info.isSymLink()||!QFileInfo(info.absolutePath()).isDir()||info.absoluteFilePath().startsWith("//"))return fail("Choose a local regular destination.");
  const auto mapPath=info.absoluteFilePath()+".readmap.jsonl";if(QFileInfo(mapPath).isSymLink())return fail("Read map must not be a symlink.");
- QFile output(info.absoluteFilePath()),journal(mapPath);qint64 processed=0,failed=0;QJsonArray bad;QCryptographicHash hash(QCryptographicHash::Sha256);QString error;
- auto addBad=[&](qint64 offset,qint64 bytes){failed+=bytes;if(!bad.isEmpty()){auto previous=bad.last().toObject();if(qint64(previous.value("offset").toDouble())+qint64(previous.value("bytes").toDouble())==offset){previous.insert("bytes",previous.value("bytes").toDouble()+bytes);bad.replace(bad.size()-1,previous);return;}}bad.append(QJsonObject{{"offset",double(offset)},{"bytes",double(bytes)}});};
+ QFile output(info.absoluteFilePath()),journal(mapPath);qint64 processed=0,failed=0;bool rangesTruncated=false;QJsonArray bad;QCryptographicHash hash(QCryptographicHash::Sha256);QString error;
+ auto addBad=[&](qint64 offset,qint64 bytes){failed+=bytes;if(!bad.isEmpty()){auto previous=bad.last().toObject();if(qint64(previous.value("offset").toDouble())+qint64(previous.value("bytes").toDouble())==offset){previous.insert("bytes",previous.value("bytes").toDouble()+bytes);bad.replace(bad.size()-1,previous);return;}}if(bad.size()<10000)bad.append(QJsonObject{{"offset",double(offset)},{"bytes",double(bytes)}});else rangesTruncated=true;};
  if(options.resume){
   if(!isRegularSource(destination)||!isRegularSource(mapPath)||!output.open(QIODevice::ReadWrite)||!journal.open(QIODevice::ReadWrite))return fail("Resume requires an existing regular image and its original read map.");
   const auto line=journal.readLine(65536);if(!line.endsWith('\n'))return fail("Invalid read-map header");auto header=QJsonDocument::fromJson(line).object();
@@ -56,6 +56,7 @@ QJsonObject rescueStream(RescueSource &source,const QString &destination,const R
    hash.addData(block);processed+=n;validEnd=journal.pos();ctx.update(processed,source.bytes*2);
   }
   // A crash may leave uncommitted image bytes or a partial journal line. Only discard those tails after full validation.
+  if(ctx.cancelled())return QJsonObject{{"status","cancelled"},{"operation","media_rescue"},{"message","Resume validation cancelled"}};
   if(!output.resize(processed)||!journal.resize(validEnd)||!output.seek(processed)||!journal.seek(validEnd))return fail("Cannot remove uncommitted checkpoint tails");
  }else{
   if(info.exists()||QFileInfo::exists(mapPath))return fail("Destination exists; select Resume explicitly or choose a new path.");
@@ -82,6 +83,6 @@ QJsonObject rescueStream(RescueSource &source,const QString &destination,const R
   while(error.isEmpty()&&n<processed&&!ctx.cancelled()){auto b=output.read(qMin(Chunk,processed-n));if(b.isEmpty()){error="Readback failed";break;}check.addData(b);n+=b.size();ctx.update(processed+n,source.bytes*2);}
   verified=!ctx.cancelled()&&error.isEmpty()&&n==processed&&check.result()==hash.result();if(!verified){status=ctx.cancelled()?"cancelled":"error";if(error.isEmpty())error="Readback incomplete or mismatched";}
  }
- return {{"status",status},{"operation","media_rescue"},{"destination",info.absoluteFilePath()},{"readMap",mapPath},{"processedBytes",double(processed)},{"unreadableBytes",double(failed)},{"unreadableRanges",bad},{"granularityBytes",options.sectorBytes},{"retries",options.retries},{"resumed",options.resume},{"sha256Written",QString::fromLatin1(hash.result().toHex())},{"imageReadbackVerified",verified},{"partialImageRetained",processed<source.bytes},{"physicalRepairPerformed",false},{"message",error.isEmpty()?"Keep image and JSONL read map together. Unreadable sectors are zero-filled. Complete readback verifies the image copy, not original content or physical repair.":error}};
+ return {{"status",status},{"operation","media_rescue"},{"destination",info.absoluteFilePath()},{"readMap",mapPath},{"processedBytes",double(processed)},{"unreadableBytes",double(failed)},{"unreadableRanges",bad},{"rangeSummaryTruncated",rangesTruncated},{"allRangesInReadMap",true},{"granularityBytes",options.sectorBytes},{"retries",options.retries},{"resumed",options.resume},{"sha256Written",QString::fromLatin1(hash.result().toHex())},{"imageReadbackVerified",verified},{"partialImageRetained",processed<source.bytes},{"physicalRepairPerformed",false},{"message",error.isEmpty()?"Keep image and JSONL read map together. Unreadable sectors are zero-filled. Complete readback verifies the image copy, not original content or physical repair.":error}};
 }
 }

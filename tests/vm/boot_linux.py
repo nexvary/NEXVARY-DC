@@ -2,6 +2,9 @@
 This is reference-image firmware coverage, not Windows installer/Secure Boot proof.
 """
 import hashlib
+import base64
+import struct
+import zlib
 import json
 import pathlib
 import shutil
@@ -59,12 +62,26 @@ for mode in ('bios', 'uefi'):
                         passed = True
                         break
             conn.sendall(b'quit\n')
+        process.terminate()
         process.wait(timeout=15)
     finally:
         if process.poll() is None:
             process.kill()
             process.wait()
         log.close()
+    if (out / (mode + '.ppm')).exists():
+        raw = (out / (mode + '.ppm')).read_bytes()
+        magic, width, height, rest = raw.split(None, 3)
+        maximum, pixels = rest.split(b'\n', 1)
+        w, h = int(width), int(height)
+        assert magic == b'P6' and maximum == b'255' and len(pixels) == w*h*3
+        def chunk(kind, value):
+            return struct.pack('>I', len(value))+kind+value+struct.pack('>I', zlib.crc32(kind+value)&0xffffffff)
+        scan = b''.join(b'\0'+pixels[y*w*3:(y+1)*w*3] for y in range(h))
+        png = b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR', struct.pack('>IIBBBBB', w,h,8,2,0,0,0))+chunk(b'IDAT', zlib.compress(scan))+chunk(b'IEND',b'')
+        (out / (mode+'.png')).write_bytes(png)
+        print('DC_VM_'+mode.upper()+'_PNG='+base64.b64encode(png).decode())
+        print((out / (mode+'-screen.txt')).read_text())
     results.append({'mode': mode, 'referenceIsoSha256': actual, 'reachedAlpineLogin': passed,
                     'secureBoot': False, 'scope': 'reference hybrid ISO as virtual hard disk, software TCG'})
     (out / 'results.json').write_text(json.dumps(results, indent=2))
