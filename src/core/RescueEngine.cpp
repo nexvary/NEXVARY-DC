@@ -36,7 +36,7 @@ bool append(QFile &journal,const QJsonObject &entry){auto line=QJsonDocument(ent
 }
 QJsonObject rescueStream(RescueSource &source,const QString &destination,const RescueOptions &options,const Context &ctx){
  auto fail=[](const QString &m){return QJsonObject{{"status","error"},{"operation","media_rescue"},{"message",m}};};
- if(source.bytes<=0||!QList<int>{512,4096}.contains(options.sectorBytes)||source.bytes%options.sectorBytes||options.retries<0||options.retries>5||source.identity.isEmpty()||!source.read)return fail("Invalid source identity, size, sector or retry settings.");
+ if(source.bytes<=0||source.bytes>((qint64(1)<<53)-4096)||!QList<int>{512,4096}.contains(options.sectorBytes)||source.bytes%options.sectorBytes||options.retries<0||options.retries>5||source.identity.isEmpty()||!source.read)return fail("Invalid source identity, size, sector or retry settings.");
  QFileInfo info(destination);if(info.isSymLink()||!QFileInfo(info.absolutePath()).isDir()||info.absoluteFilePath().startsWith("//"))return fail("Choose a local regular destination.");
  const auto mapPath=info.absoluteFilePath()+".readmap.jsonl";if(QFileInfo(mapPath).isSymLink())return fail("Read map must not be a symlink.");
  QFile output(info.absoluteFilePath()),journal(mapPath);qint64 processed=0,failed=0;bool rangesTruncated=false;QJsonArray bad;QCryptographicHash hash(QCryptographicHash::Sha256);QString error;

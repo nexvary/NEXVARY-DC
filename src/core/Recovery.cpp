@@ -77,6 +77,7 @@ QJsonObject recoverImage(const QString &source,const QString &directory,const Co
  if(ctx.cancelled() && status=="completed")status="cancelled";
  if(input.size()!=total){status="error";message="Image size changed during recovery.";}
  QJsonObject result{{"status",status},{"operation","file_recovery"},{"source",QFileInfo(source).absoluteFilePath()},{"destination",output.path()},{"scannedBytes",double(scanned)},{"recoveredCount",files.size()},{"files",files},{"message",message},{"scope","PNG and JPEG streaming signature carving, bounded by source-image length. Includes live and deleted contiguous data. Original names, folders, fragmentation and overwritten/TRIM data are not restored. JPEG files require visual verification."}};
+ int completeCount=0,partialCount=0,candidateCount=0;for(const auto &value:files){auto condition=value.toObject().value("condition").toString();if(condition=="complete")++completeCount;else if(condition=="partial")++partialCount;else ++candidateCount;}result.insert("completeCount",completeCount);result.insert("partialCount",partialCount);result.insert("candidateCount",candidateCount);
  QFile manifest(output.filePath("manifest.json"));const auto json=QJsonDocument(result).toJson();
  if(!manifest.open(QIODevice::WriteOnly|QIODevice::NewOnly) || manifest.write(json)!=json.size() || !manifest.flush())result.insert("manifestWarning","Manifest write failed; export the operation report.");
  return result;

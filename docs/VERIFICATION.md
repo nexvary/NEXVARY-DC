@@ -13,12 +13,13 @@ Release publication is gated on Windows 2022 and Ubuntu 24.04 builds/tests for t
 - System/internal/boot/read-only disk write protection and stale identity rejection.
 - Arabic/English compact QML startup, confirmation, storage, rescue, boot and developer pages; screenshot artifacts.
 - Windows hybrid-writer C# compilation, regular-file fixture write/readback, padding, changed-source rejection and invalid ISO rejection.
+- QEMU reference Linux hybrid disk boot to Alpine login in BIOS and UEFI; screenshots and ISO SHA-256 retained.
 - Windows portable startup with Qt paths removed, bundled SMART executable, silent installer, installed startup and uninstall.
 
 These deterministic fixtures exercise image data and injected read failures. They do not emulate every filesystem implementation, controller, filesystem race or physical failure. Parser fuzzing, exhaustive filesystem coverage and hardware certification are not claimed.
 
 ## Boot verification boundary
-Windows BIOS/UEFI preparation is implemented. WIM parts are staged before erasure and hash-verified after copying. Hybrid Linux writes have byte-for-byte readback. No bootable Windows ISO is supplied to this session; no full Windows installer boot in a VM is attested. The local environment has no QEMU and package installation was unavailable. Existing boot helper tests do not constitute a VM boot test. Secure Boot is unverified for all modes. This is a software-validation limitation, not a hardware test silently passed to the user.
+Windows BIOS/UEFI preparation is implemented. WIM parts are staged before erasure and hash-verified after copying. Hybrid Linux writes have byte-for-byte readback. No bootable Windows ISO is supplied to this session; no full Windows installer boot in a VM is attested. GitHub Actions additionally boots the official Alpine virt 3.22.1 hybrid ISO as a virtual hard disk under QEMU TCG with SeaBIOS and OVMF UEFI, requiring an identifiable Alpine login screen (OCR plus retained screenshots). Both modes reached login in run 37783893889. This validates that reference image in those virtual firmware modes; it is not an end-to-end Windows USB creation or Secure Boot test. Secure Boot is unverified for all modes. This is a software-validation limitation, not a hardware test silently passed to the user.
 
 ## Remaining implementation limits
 - NTFS compressed/encrypted/named streams and ATTRIBUTE_LIST extensions are skipped with reasons. A fragmented `$MFT` works when its full runs fit in its base DATA attribute; external MFT extension records are not followed.

@@ -28,7 +28,7 @@ for mode in ('bios', 'uefi'):
     monitor = out / (mode + '.sock')
     command = ['qemu-system-x86_64', '-machine', 'q35', '-accel', 'tcg', '-m', '512',
                '-display', 'none', '-serial', 'file:' + str(out / (mode + '-serial.txt')),
-               '-monitor', 'unix:' + str(monitor) + ',server=on,wait=off',
+               '-qmp', 'unix:' + str(monitor) + ',server=on,wait=off',
                '-drive', 'file=' + str(iso) + ',format=raw,if=ide,snapshot=on',
                '-no-reboot', '-nic', 'none']
     if mode == 'uefi':
@@ -48,21 +48,33 @@ for mode in ('bios', 'uefi'):
         with socket.socket(socket.AF_UNIX) as conn:
             conn.settimeout(5)
             conn.connect(str(monitor))
-            conn.recv(4096)
+            channel = conn.makefile('rwb', buffering=0)
+            json.loads(channel.readline())
+            def qmp(command, arguments=None):
+                request = {'execute': command}
+                if arguments is not None:
+                    request['arguments'] = arguments
+                channel.write((json.dumps(request)+'\n').encode())
+                while True:
+                    response = json.loads(channel.readline())
+                    if 'error' in response:
+                        raise RuntimeError(response['error'])
+                    if 'return' in response:
+                        return response['return']
+            qmp('qmp_capabilities')
             for attempt in range(18):
                 time.sleep(5)
                 screenshot = (out / (mode + '.ppm')).resolve()
-                conn.sendall(('screendump ' + str(screenshot) + '\n').encode())
-                time.sleep(0.5)
-                conn.recv(8192)
+                qmp('screendump', {'filename': str(screenshot)})
                 if screenshot.exists():
                     text = subprocess.check_output(['tesseract', str(screenshot), 'stdout'], stderr=subprocess.DEVNULL, text=True)
                     (out / (mode + '-screen.txt')).write_text(text)
                     if 'login:' in text.lower() or 'welcome to alpine' in text.lower():
                         passed = True
                         break
-            conn.sendall(b'quit\n')
-        process.terminate()
+            qmp('quit')
+        if process.poll() is None:
+            process.terminate()
         process.wait(timeout=15)
     finally:
         if process.poll() is None:
