@@ -14,6 +14,8 @@ ApplicationWindow {
  property string notice:""
  property string historyReport:""
  property bool rescueMode:false
+ property bool diskRescueWorkspace:false
+ property alias selectiveRetryEnabled:selectiveRetry.checked
  property var isoCallback:null
  property var confirmPlan:({})
  property string confirmText:""
@@ -124,7 +126,11 @@ ApplicationWindow {
      GridLayout {visible:root.page===0;Layout.fillWidth:true;columns:2;columnSpacing:10;rowSpacing:10
       Repeater {model:[{p:7,k:"partition",title:root.t("الفورمات وإدارة الأقسام","Format & manage partitions"),desc:root.t("NTFS / exFAT / FAT32 • GPT / MBR","NTFS / exFAT / FAT32 • GPT / MBR")},{p:8,k:"boot",title:root.t("وسيط تثبيت Windows","Windows installation media"),desc:root.t("UEFI x64 • تحقق من الملفات","UEFI x64 • verified file copy")},{p:5,k:"capacity",title:root.t("اختبار الفلاشات والكروت","Test flash drives & cards"),desc:root.t("كتابة ثم قراءة • كشف اختلاف البيانات","Write then read • detect mismatches")},{p:2,k:"rescue",title:root.t("صور الأقراص والإنقاذ","Disk images & rescue"),desc:root.t("فحص • نسخة موثقة • SHA-256","Inspect • verified copy • SHA-256")}];delegate:Button {required property var modelData;Layout.fillWidth:true;implicitHeight:96;onClicked:root.page=modelData.p;background:Rectangle {radius:9;color:parent.hovered?"#19344a":"#102131";border.color:"#314f65"}contentItem:RowLayout {spacing:12;AppIcon {name:modelData.k;Layout.preferredWidth:46;Layout.preferredHeight:46}ColumnLayout {Layout.fillWidth:true;Label {text:modelData.title;font.bold:true;color:"#e6f1fa";Layout.fillWidth:true;wrapMode:Text.WordWrap}Label {text:modelData.desc;color:"#8dadc5";font.pixelSize:11;Layout.fillWidth:true;wrapMode:Text.WordWrap}}}}}
      }
-     Panel {visible:root.page===2;Layout.fillWidth:true
+     RowLayout {visible:root.page===2;Layout.fillWidth:true
+      ActionButton {text:root.t("استعادة وفحص صورة","Recover & inspect image");primary:!root.diskRescueWorkspace;onClicked:root.diskRescueWorkspace=false}
+      ActionButton {text:root.t("إنقاذ قرص وإعادة المحاولة","Image disk & retry");primary:root.diskRescueWorkspace;onClicked:root.diskRescueWorkspace=true}
+     }
+     Panel {visible:root.page===2&&!root.diskRescueWorkspace;Layout.fillWidth:true
       ColumnLayout {anchors.fill:parent;spacing:12
        Label {text:root.t("استعادة الملفات من صورة الإنقاذ","Recover files from rescue image");font.pixelSize:20;font.bold:true;color:"#e3f1fa"}
        Label {text:root.t("اختر ملف صورة الإنقاذ، وحدد مجلدًا على قرص الاستعادة. البحث بالتواقيع يستخرج الصور المتصلة بمعالجة متدفقة، بما فيها بيانات محذوفة لم تُكتب فوقها. لا يعيد أسماء الملفات أو المجلدات أو الملفات المجزأة. تُفحص CRC لصور PNG؛ صور JPEG تحتاج مراجعة بصرية. يحتفظ بالنتائج عند الإلغاء دون تعديل صورة المصدر.","Select a rescue image and a folder on your recovery disk. Signature mode streams contiguous photos without a 64 MiB file cap, including deleted data that was not overwritten. Original names, folders and fragmented files are not restored. PNG CRC is checked; JPEG candidates need visual review. Cancellation retains results without modifying the source image.");color:"#a5bfd2";Layout.fillWidth:true;wrapMode:Text.WordWrap}
@@ -133,11 +139,11 @@ ApplicationWindow {
        Label {visible:recoveryMode.currentIndex===1;text:root.t("FAT32: صورة قسم أو قرص بنظام GPT أو MBR. يستخرج ملفات محذوفة حين تكون كتلها المتصلة فارغة؛ لا يضمن سلامة المحتوى. الحرف الأول من الاسم القصير مفقود. يدعم GPT وMBR الممتد، والأسماء الطويلة والمجلدات عند بقاء بياناتها. النتائج مرشحة للفحص ولا تضمن سلامة المحتوى.","FAT32: volume image or GPT/MBR disk image. Extracts deleted contiguous files whose clusters are still free; content integrity is not guaranteed. First short-name character is lost. GPT and extended MBR are supported. Long names and folders are retained when metadata survives. Results remain candidates; allocation does not prove original content.");color:"#e7bc7b";Layout.fillWidth:true;wrapMode:Text.WordWrap}
        RowLayout {Layout.fillWidth:true;TextField {id:recoveryPath;Layout.fillWidth:true;placeholderText:root.t("مجلد الاستعادة على قرص آخر","Recovery folder on another disk");selectByMouse:true;enabled:!backend.busy}ActionButton {text:root.t("اختيار مجلد","Choose folder");onClicked:recoveryFolder.open()}}
        RowLayout {Layout.fillWidth:true;Label {text:root.t("أقصى عدد ملفات (أنظمة الملفات):","Maximum files (filesystem recovery):");color:"#c1d5e6";Layout.fillWidth:true;wrapMode:Text.WordWrap}SpinBox {id:fileLimit;from:1;to:1000000;value:100000;stepSize:10000;editable:true;enabled:!backend.busy}}
-       Label {visible:recoveryMode.currentIndex>=2;text:root.t("استعادة من بيانات النظام: أسماء ومجلدات ومحتوى مجزأ عند بقاء التخصيص. كامل يعني اكتمال عدد البايتات، وليس ضمان سلامة المحتوى. لا يدعم NTFS المضغوط أو المشفر أو امتدادات ATTRIBUTE_LIST؛ تظهر القيود في التقرير.","Metadata recovery: names, folders and fragmented content when allocation survives. Complete means byte coverage, not content integrity. Compressed/encrypted NTFS and ATTRIBUTE_LIST extensions are reported as unsupported.");Layout.fillWidth:true;wrapMode:Text.WordWrap;color:"#e7bc7b"}
+       Label {visible:recoveryMode.currentIndex>=2;text:root.t("استعادة من بيانات النظام: أسماء ومجلدات ومحتوى مجزأ عند بقاء التخصيص. كامل يعني اكتمال عدد البايتات، وليس ضمان سلامة المحتوى. لا يدعم NTFS المضغوط أو المشفر أو امتدادات ATTRIBUTE_LIST الخارجية لجدول MFT؛ تظهر القيود في التقرير.","Metadata recovery: names, folders and fragmented content when allocation survives. Complete means byte coverage, not content integrity. Compressed/encrypted NTFS and external MFT ATTRIBUTE_LIST extensions are reported as unsupported.");Layout.fillWidth:true;wrapMode:Text.WordWrap;color:"#e7bc7b"}
        ActionButton {text:root.t("بدء استعادة الملفات","Start file recovery");primary:true;enabled:!backend.busy&&imagePath.text.length>0&&recoveryPath.text.length>0;onClicked:backend.recoverImage(imagePath.text,recoveryPath.text,recoveryMode.currentIndex,fileLimit.value)}
       }
      }
-     Panel {visible:root.page===1||root.page===2;Layout.fillWidth:true
+     Panel {visible:root.page===1||(root.page===2&&root.diskRescueWorkspace);Layout.fillWidth:true
       ColumnLayout {anchors.fill:parent;spacing:12
        Label {text:root.page===1?root.t("فحص السطح بالقراءة فقط","Read-only surface scan"):root.t("إنشاء صورة إنقاذ للقرص","Create rescue disk image");font.pixelSize:19;font.bold:true;color:"#dbeefc"}
        Label {text:root.t("يتطلب اختيار قرص فعلي. الفحص لا يصلح القطاعات؛ فحص السطح يسجل كتل 1 MiB؛ الإنقاذ يعيد المحاولة بدقة القطاع المختار. احفظ الصورة وخريطة JSONL معًا. الاستئناف يتحقق من هوية المصدر والوجهة وSHA-256 قبل المتابعة.","Select a physical disk. Scanning does not repair sectors; surface scan reports 1 MiB blocks; rescue retries at the selected sector size. Keep the image and JSONL map together. Explicit resume verifies source/destination identity and SHA-256 before continuing.");Layout.fillWidth:true;wrapMode:Text.WordWrap;color:"#a6bfd1"}
@@ -150,7 +156,7 @@ ApplicationWindow {
        Label {visible:!backend.windows&&root.page===2;text:root.t("إنشاء صور الأقراص الفعلية متاح على Windows حاليًا؛ على Linux يمكنك فحص السطح وملفات الصور.","Physical-disk imaging currently supports Windows; Linux supports surface and image-file scanning.");Layout.fillWidth:true;wrapMode:Text.WordWrap;color:"#efbd77"}
       }
      }
-     Panel {visible:root.page===2;Layout.fillWidth:true
+     Panel {visible:root.page===2&&!root.diskRescueWorkspace;Layout.fillWidth:true
       ColumnLayout {anchors.fill:parent;spacing:12
        Label {text:root.t("فحص ونسخ صورة القرص","Inspect and copy disk image");font.pixelSize:20;font.bold:true;color:"#e3f1fa"}
        Label {text:root.t("اختر ملف صورة عاديًا. لن يُستبدل أي ملف موجود. إنقاذ الوسيط المتعثر واستعادة الملفات المحذوفة مساران منفصلان عن النسخ العادي.","Select a regular image file. Existing files are never overwritten. Failing-media rescue and deleted-file recovery are separate from regular copying.");color:"#9ebbd0";Layout.fillWidth:true;wrapMode:Text.WordWrap}

@@ -38,6 +38,7 @@ int main(int argc,char **argv) {
   for(char32_t c:U"A9\u0627\u0644\u0639\u0631\u0628\u064a\u0629")if(c && !metrics.inFontUcs4(c)){std::fprintf(stderr,"Missing UI glyph U+%04X\n",unsigned(c));return 4;}
  }
  if(args.contains("--english"))root->setProperty("arabic",false);
+ if(args.contains("--selective-retry")){root->setProperty("diskRescueWorkspace",true);root->setProperty("selectiveRetryEnabled",true);}
  if(args.contains("--boot-repair"))root->setProperty("bootRepairMode",true);
  const int page=args.indexOf("--page");
  if(page>=0 && page+1<args.size())root->setProperty("page",qBound(0,args[page+1].toInt(),9));

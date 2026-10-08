@@ -77,6 +77,8 @@ jobs:
           QT_QUICK_BACKEND: software
         run: |
           mkdir -p out/ui
+          build/nexvary_dc --page 2 --selective-retry --screenshot out/ui/selective-ar.png
+          build/nexvary_dc --page 2 --selective-retry --english --screenshot out/ui/selective-en.png
           build/nexvary_dc --page 2 --screenshot out/ui/recovery-ar.png
           build/nexvary_dc --page 8 --boot-repair --compact --screenshot out/ui/repair-ar.png
           build/nexvary_dc --page 8 --boot-repair --english --compact --screenshot out/ui/repair-en.png
@@ -105,6 +107,14 @@ jobs:
             if(!$p.WaitForExit(45000)) {$p.Kill();throw 'Repair UI screenshot timeout'}
             if($p.ExitCode -ne 0) {throw 'Repair UI screenshot failed'}
           }
+          foreach($language in @('ar','en')) {
+            $arguments=@('--font-proof','--page','2','--selective-retry','--screenshot',"out/ui-windows/selective-$language.png")
+            if($language -eq 'en') {$arguments+='--english'}
+            $p=Start-Process build/Release/nexvary_dc.exe -ArgumentList $arguments -PassThru
+            if(!$p.WaitForExit(45000)) {$p.Kill();throw 'Selective retry UI screenshot timeout'}
+            if($p.ExitCode -ne 0) {throw 'Selective retry UI screenshot failed'}
+          }
+          python -c "import base64,pathlib; print('DC_WINDOWS_SELECTIVE_PNG='+base64.b64encode(pathlib.Path('out/ui-windows/selective-ar.png').read_bytes()).decode())"
           python -c "import base64,pathlib; print('DC_WINDOWS_REPAIR_PNG='+base64.b64encode(pathlib.Path('out/ui-windows/repair-ar.png').read_bytes()).decode())"
       - name: Upload Windows repair UI
         if: runner.os == 'Windows'
