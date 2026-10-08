@@ -283,7 +283,7 @@ jobs:
     if: ${{ always() && needs.linux-vm.result != 'cancelled' }}
     needs: linux-vm
     runs-on: windows-2022
-    timeout-minutes: 80
+    timeout-minutes: 100
     strategy:
       fail-fast: false
       matrix:
@@ -352,9 +352,10 @@ jobs:
           for p in pathlib.Path('windows-proof').glob('*/result.json'):
               row=json.loads(p.read_text(encoding='utf-8-sig'))
               assert row['installedWindowsBoot'] and row['secureBoot']==(row['mode']=='secureboot')
+              assert row['dcUSBPreparationTested'] and row['usbWindowsPEBoot'] and row['systemDiskRefused'] and row['changedIdentityRefused'] and row['insufficientSpaceRefused']
               windows[row['mode']]=row
           assert set(windows)=={'bios','uefi','secureboot'}
-          data['verification']={'directAHCIVM':direct,'installedWindowsVM':windows,'dcWindowsUSBEndToEndTested':False,'firmwareRepairCertifiedFamilies':0}
+          data['verification']={'directAHCIVM':direct,'installedWindowsVM':windows,'dcWindowsUSBEndToEndTested':True,'firmwareRepairCertifiedFamilies':0}
 
           p=pathlib.Path('release/NEXVARY-DC-0.7.0-Linux-Direct-AHCI.tar.gz')
           data['files'].append({'name':p.name,'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()})
