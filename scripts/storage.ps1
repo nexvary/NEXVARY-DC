@@ -79,6 +79,7 @@ try {
   $bios=$r.action -eq 'windows_bios_usb'
   if(!(Test-Path -LiteralPath $r.source -PathType Leaf) -or [IO.Path]::GetExtension($r.source) -ine '.iso') { throw 'Select an existing Windows ISO.' }
   $image=Mount-DiskImage -ImagePath $r.source -PassThru
+  $splitFolder=$null
   try {
    $vol=$image | Get-Volume
    if(!$vol.DriveLetter) { throw 'Unable to mount ISO.' }
@@ -92,6 +93,19 @@ try {
    $total=($files | Measure-Object Length -Sum).Sum
    $partSize=[long][Math]::Min(31GB,[long]$d.Size-256MB)
    if($partSize -lt $total+512MB) { throw 'Not enough USB space for this ISO plus reserve.' }
+   # Prepare split WIM before any target mutation, then verify every copied part.
+   $largeWim=@($files | Where-Object {$_.Length -ge 4GB})
+   $splitFiles=@()
+   if($largeWim.Count) {
+    $splitFolder=Join-Path ([IO.Path]::GetTempPath()) ('NEXVARY-WIM-'+[guid]::NewGuid().ToString())
+    $tempDrive=New-Object IO.DriveInfo ([IO.Path]::GetPathRoot($splitFolder))
+    if($tempDrive.AvailableFreeSpace -lt $largeWim[0].Length+512MB){throw 'Insufficient temporary space to stage and verify split WIM before disk changes.'}
+    $null=New-Item -ItemType Directory -Path $splitFolder
+    & "$env:SystemRoot\System32\dism.exe" /English /Split-Image "/ImageFile:$($largeWim[0].FullName)" "/SWMFile:$(Join-Path $splitFolder 'install.swm')" /FileSize:3800 /CheckIntegrity | Out-Null
+    if($LASTEXITCODE -ne 0){throw 'WIM split failed before target changes.'}
+    $splitFiles=@(Get-ChildItem -LiteralPath $splitFolder -Filter '*.swm' -File)
+    if(!$splitFiles.Count -or @($splitFiles | Where-Object {$_.Length -le 0 -or $_.Length -ge 4GB}).Count){throw 'Invalid split WIM output.'}
+   }
    $null=Guard
    Clear-Disk -Number $d.Number -RemoveData -RemoveOEM -Confirm:$false
    Initialize-Disk -Number $d.Number -PartitionStyle $(if($bios){'MBR'}else{'GPT'}) | Out-Null
@@ -104,8 +118,12 @@ try {
     $relative=$f.FullName.Substring($source.Length);$dest=Join-Path $target $relative
     [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($dest)) | Out-Null
     if($f.Length -ge 4GB) {
-     & "$env:SystemRoot\System32\dism.exe" /English /Split-Image "/ImageFile:$($f.FullName)" "/SWMFile:$(Join-Path $target 'sources\install.swm')" /FileSize:3800 /CheckIntegrity | Out-Null
-     if($LASTEXITCODE -ne 0) { throw 'WIM split failed; USB is incomplete.' }
+     foreach($part in $splitFiles) {
+      $partDest=Join-Path $target ('sources\'+$part.Name)
+      Copy-Item -LiteralPath $part.FullName -Destination $partDest
+      if((Get-FileHash -LiteralPath $part.FullName -Algorithm SHA256).Hash -cne (Get-FileHash -LiteralPath $partDest -Algorithm SHA256).Hash){throw "Split WIM readback mismatch: $($part.Name)"}
+      $verified+=$part.Length
+     }
     } else {
      Copy-Item -LiteralPath $f.FullName -Destination $dest
      if((Get-FileHash -LiteralPath $f.FullName -Algorithm SHA256).Hash -cne (Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash) { throw "USB readback mismatch: $relative" }
@@ -116,9 +134,9 @@ try {
     & (Join-Path $source 'boot\bootsect.exe') /nt60 "$($p.DriveLetter):" /mbr | Out-Null
     if($LASTEXITCODE -ne 0) { throw 'BIOS boot-code installation failed; media is incomplete.' }
    }
-   Emit @{status='completed';operation=$r.action;bootMode=$(if($bios){'BIOS + UEFI (MBR)'}else{'UEFI (GPT)'});message='Windows x64 installation media created. Copied files passed SHA-256 readback; split WIM passed DISM integrity processing. Physical boot not tested.';verifiedBytes=$verified;splitWimReadbackVerified=$false;device=$r.device}
+   Emit @{status='completed';operation=$r.action;bootMode=$(if($bios){'BIOS + UEFI (MBR)'}else{'UEFI (GPT)'});message='Windows x64 installation media created. Copied files passed SHA-256 readback; split WIM staged before erasure and each part SHA-256 verified. Boot and Secure Boot compatibility not proven.';verifiedBytes=$verified;splitWimReadbackVerified=($splitFiles.Count -gt 0);bootTested=$false;secureBootTested=$false;device=$r.device}
    exit 0
-  } finally { Dismount-DiskImage -ImagePath $r.source -ErrorAction SilentlyContinue | Out-Null }
+  } finally { if($splitFolder -and (Test-Path -LiteralPath $splitFolder)){Remove-Item -LiteralPath $splitFolder -Recurse -Force -ErrorAction SilentlyContinue}; Dismount-DiskImage -ImagePath $r.source -ErrorAction SilentlyContinue | Out-Null }
  }
  Emit @{status='completed';operation=$r.action;message='Storage command completed. Refresh disks to view the new layout.';device=$r.device;partition=$r.partition}
 } catch { Emit @{status='error';operation=[string]$r.action;message=$_.Exception.Message;device=$r.device};exit 1 }

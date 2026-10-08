@@ -33,7 +33,7 @@ jobs:
       matrix:
         os: [ubuntu-24.04, windows-2022]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - name: Linux build dependencies
@@ -68,7 +68,7 @@ jobs:
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
-          name: NEXVARY-DC-UI-0.3.0
+          name: NEXVARY-DC-UI-0.4.0
           path: out/ui/
           if-no-files-found: error
       - name: Deploy Windows
@@ -113,7 +113,7 @@ jobs:
         shell: pwsh
         run: |
           $destination = Join-Path $env:RUNNER_TEMP 'NEXVARY-DC-installed-test'
-          $setup = (Resolve-Path out/NEXVARY-DC-0.3.0-Setup.exe).Path
+          $setup = (Resolve-Path out/NEXVARY-DC-0.4.0-Setup.exe).Path
           $install = Start-Process $setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/NOICONS',"/DIR=$destination") -PassThru
           if (!$install.WaitForExit(60000)) { $install.Kill(); throw "Installer timeout" }
           if ($install.ExitCode -ne 0) { throw "Installation failed: $($install.ExitCode)" }
@@ -127,17 +127,86 @@ jobs:
           $remove = Start-Process (Join-Path $destination 'unins000.exe') -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -PassThru
           if (!$remove.WaitForExit(60000)) { $remove.Kill(); throw "Uninstaller timeout" }
           if ($remove.ExitCode -ne 0 -or (Test-Path $exe)) { throw "Uninstall verification failed" }
+      - name: Assemble downloadable release and checksums
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path out/portable/* -DestinationPath out/NEXVARY-DC-0.4.0-Portable.zip
+          $files=@('out/NEXVARY-DC-0.4.0-Setup.exe','out/NEXVARY-DC-0.4.0-Portable.zip')
+          $manifest=@{version='0.4.0';commit=$env:GITHUB_SHA;run=$env:GITHUB_RUN_ID;files=@()}
+          foreach($path in $files){$item=Get-Item $path;$hash=(Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant();$manifest.files+=@{name=$item.Name;bytes=$item.Length;sha256=$hash}}
+          $manifest | ConvertTo-Json -Depth 5 | Set-Content out/release-manifest.json -Encoding utf8
+          $manifest.files | ForEach-Object {"$($_.sha256)  $($_.name)"} | Set-Content out/SHA256SUMS.txt -Encoding ascii
+          Get-Content out/release-manifest.json
+      - name: Upload release files
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: NEXVARY-DC-Release-0.4.0
+          path: |
+            out/NEXVARY-DC-0.4.0-Setup.exe
+            out/NEXVARY-DC-0.4.0-Portable.zip
+            out/release-manifest.json
+            out/SHA256SUMS.txt
+          if-no-files-found: error
       - name: Upload installer
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: NEXVARY-DC-Installer-0.3.0
-          path: out/NEXVARY-DC-0.3.0-Setup.exe
+          name: NEXVARY-DC-Installer-0.4.0
+          path: out/NEXVARY-DC-0.4.0-Setup.exe
           if-no-files-found: error
       - name: Upload Windows artifacts
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: NEXVARY-DC-Portable-0.3.0
+          name: NEXVARY-DC-Portable-0.4.0
           path: out/portable/
           if-no-files-found: error
+
+  linux-vm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install virtual firmware test tools
+        run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 ovmf tesseract-ocr
+      - name: Boot reference hybrid Linux in BIOS and UEFI
+        run: python3 tests/vm/boot_linux.py
+      - name: Upload VM proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: NEXVARY-DC-VM-0.4.0
+          path: |
+            out/vm/*.ppm
+            out/vm/*.txt
+            out/vm/*.json
+          if-no-files-found: warn
+
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [verify, linux-vm]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: NEXVARY-DC-Release-0.4.0
+          path: release
+      - name: Publish verified binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PYVERIFY'
+          import json, os, pathlib, hashlib
+          data=json.loads(pathlib.Path('release/release-manifest.json').read_text(encoding='utf-8-sig'))
+          assert data['commit']==os.environ['GITHUB_SHA']
+          for row in data['files']:
+              p=pathlib.Path('release')/row['name']
+              assert p.stat().st_size==row['bytes']
+              assert hashlib.sha256(p.read_bytes()).hexdigest()==row['sha256']
+          PYVERIFY
+          gh release create v0.4.0 release/* --target "$GITHUB_SHA" --title 'NEXVARY Disk Care 0.4.0' --notes-file docs/RELEASE-0.4.0.md

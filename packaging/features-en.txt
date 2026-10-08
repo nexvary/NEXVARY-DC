@@ -1,35 +1,37 @@
-NEXVARY DISK CARE 0.3.0
-Storage diagnostics and maintenance
+NEXVARY DISK CARE 0.4.0
+Storage diagnostics, metadata recovery and verified imaging
 
 INCLUDED FEATURES
+- Arabic RTL / English interface, colored icons and developer page
 - Physical disk discovery and bundled SMART diagnostics
-- Temperature, operating hours, firmware version and health indicators when supported
-- Read-only physical surface scan with unreadable-range reporting
-- Best-effort disk imaging to a different disk, read map and image readback
-- Image-file inspection, SHA-256 and verified copying
-- Flash/card write-and-read tests over a selected size
-- External USB/SD/MMC partition formatting: exFAT, NTFS, FAT32
-- Create/delete partitions and rebuild GPT/MBR layouts
-- Filesystem scan and repair using Windows storage services
-- Windows x64 UEFI/GPT or BIOS + UEFI/MBR installation media
-- Hybrid Linux ISO writing with volume locking and SHA-256 readback
-- PNG/JPEG signature carving from rescue images
-- Contiguous deleted FAT32 files from volume images or primary MBR partitions
-- Separate recovery folders with manifests, hashes and verified file copies
-- Large install.wim splitting via DISM; copied-file SHA-256 readback
-- Local operation history and exportable JSON reports
-- Arabic RTL / English interface and developer information
+- Read-only surface scan; no claim of physical repair
+- Rescue imaging with explicit resume and durable per-block JSONL checkpoints
+- Resume checks source identity, destination file identity and every committed SHA-256
+- Failed 1 MiB reads subdivided to 512/4096-byte sectors, with 0-5 extra retries
+- NTFS deleted resident files and nonresident/sparse data with complete MFT runlists
+- exFAT deleted entry sets, contiguous extents and surviving fragmented FAT chains
+- FAT32 deleted files, surviving long names, live folder paths and retained FAT chains
+- GPT (CRC validated), primary MBR and extended/logical MBR image partitions
+- Streaming extraction without the former 64 MiB per-file memory limit
+- Configurable metadata file count: default 100000, maximum 1000000
+- Original names/folders where surviving metadata permits; collision-safe output
+- Complete / partial / candidate classification, manifests, SHA-256 and readback
+- Streaming PNG CRC checks and JPEG signature candidates
+- Image inspection and SHA-256 verified copying
+- USB/SD/MMC formatting, partition creation/deletion and GPT/MBR layouts
+- Protected system disks and target-specific destructive-operation confirmation
+- Windows x64 UEFI/GPT and BIOS+UEFI/MBR installation-media preparation
+- WIM staging before disk changes and per-part SHA-256 copy verification
+- Linux hybrid image writing, volume locking and SHA-256 readback
+- Flash/card capacity sampling, filesystem maintenance and local JSON reports
 
-DEVICE REVIEW BEFORE EVERY STORAGE CHANGE
-Internal/system disks are protected. External disk changes require administrator
-permission, a target-specific confirmation and backup acknowledgement.
-
-IMPORTANT SCOPE
-GPT/MBR rebuilding and boot-media creation erase the target disk.
-Capacity tests cover tested space, not exact physical NAND capacity.
-Rescue records 1 MiB unreadable chunks as zeros and cannot restore those bytes.
-Firmware flashing and physical surface repair are not shipped. Physical boot and
-disk repair have not been hardware-tested. Linux boot support depends on its hybrid ISO.
-NTFS/exFAT undelete and fragmented-file recovery are unsupported. JPEG and FAT32
-candidates require content review; copy hashes do not prove original data integrity.
-Original long names and folder hierarchy are not reconstructed. Limits: 64 MiB/file, 10000 files.
+IMPORTANT LIMITS
+Complete recovery means byte coverage, not proof that deleted data survived overwrite.
+Overwritten/TRIM-discarded bytes cannot be reconstructed. NTFS compressed/encrypted
+streams and ATTRIBUTE_LIST extensions are reported as unsupported. Deleted FAT32
+folder chains cannot be reliably rebuilt; FAT32 results remain candidates.
+Resume requires an identifiable source and the original image/map pair. Physical
+rescue destination mapping is Windows-only. Surface scanning still reports 1 MiB blocks.
+GPT images currently assume 512-byte partition-table sectors. Resource limits and
+unsupported/corrupt entries appear in reports. No firmware flashing or physical repair.
+Copied boot files and ISO markers do not prove bootability or Secure Boot support.

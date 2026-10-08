@@ -1,4 +1,4 @@
-#define AppVersion "0.3.0"
+#define AppVersion "0.4.0"
 [Setup]
 AppId={{D6736F2C-56E0-4A8A-8C30-8872AA9A47E1}
 AppName=NEXVARY Disk Care
@@ -9,7 +9,7 @@ AppSupportURL=https://nexvary.com
 DefaultDirName={autopf}\NEXVARY\Disk Care
 DefaultGroupName=NEXVARY Disk Care
 OutputDir=..\out
-OutputBaseFilename=NEXVARY-DC-0.3.0-Setup
+OutputBaseFilename=NEXVARY-DC-0.4.0-Setup
 SetupIconFile=..\assets\nexvary-dc.ico
 UninstallDisplayIcon={app}\nexvary_dc.exe
 WizardImageFile=..\assets\setup-banner.bmp

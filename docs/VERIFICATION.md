@@ -1,13 +1,31 @@
-# Verification — 0.3.0
+# Verification — 0.4.0
 
-Verified code baseline: `a85a40539abf5a42acf484de8ec19502f06ebe3e`, GitHub Actions [37710044444](https://github.com/nexvary/NEXVARY-DC/actions/runs/37710044444), successful on Windows 2022 and Ubuntu 24.04. Windows passed 14 CTest suites; Linux passed 12. The UI is subsequently reordered to show file recovery first; release CI runs on every change.
+Release publication is gated on Windows 2022 and Ubuntu 24.04 builds/tests for the **same commit**. `release-manifest.json` records its SHA and Actions run. A local source tree or a successful compile alone is not release evidence.
 
-Windows verification includes portable startup with an isolated runtime path, installer compilation, silent installation, installed startup and uninstallation. The hybrid-writer tests compile the actual C# helper, write a regular-file fixture using aligned sectors, check SHA-256 readback, verify source preservation and final-sector padding, and reject a changed source and a non-hybrid fixture. Read-only Windows storage inventory is also exercised. No test writes a physical disk.
+## Automated checks in the gate
+- NTFS resident and fragmented deleted contents, Unicode parent hierarchy, SHA-256 comparison, USA corruption, allocation collision and invalid geometry.
+- A 65 MiB NTFS extraction (above the former 64 MiB cap).
+- exFAT contiguous/fragmented deleted contents; entry checksum and bitmap collision rejection.
+- GPT CRC-validated exFAT partition extraction and bad-table rejection; bounded EBR traversal.
+- FAT32 deleted entries and retained-chain candidates; source preservation.
+- PNG CRC, JPEG signature boundaries, malformed/truncated images and cancellation.
+- Rescue cancellation/resume, uncommitted image/map tails, changed source identity, corrupted destination, sector fallback/retry count, insufficient destination space and invalid sector settings.
+- System/internal/boot/read-only disk write protection and stale identity rejection.
+- Arabic/English compact QML startup, confirmation, storage, rescue, boot and developer pages; screenshot artifacts.
+- Windows hybrid-writer C# compilation, regular-file fixture write/readback, padding, changed-source rejection and invalid ISO rejection.
+- Windows portable startup with Qt paths removed, bundled SMART executable, silent installer, installed startup and uninstall.
 
-Recovery tests check valid PNG CRCs, JPEG boundaries across scan chunks, corrupt/truncated candidates, cancellation preserving results, refusal of raw-device source paths, a sparse FAT32 image containing a deleted file and rejection once its cluster is allocated. Policy tests cover system/boot/read-only/offline protection and replacement-disk identities for all boot-media actions.
+These deterministic fixtures exercise image data and injected read failures. They do not emulate every filesystem implementation, controller, filesystem race or physical failure. Parser fuzzing, exhaustive filesystem coverage and hardware certification are not claimed.
 
-UI proof includes Arabic recovery, Arabic boot and English compact boot screenshots. Screenshot review prompted moving recovery controls and source selection to the top of the rescue page. The installer lists the supported modes and their limits.
+## Boot verification boundary
+Windows BIOS/UEFI preparation is implemented. WIM parts are staged before erasure and hash-verified after copying. Hybrid Linux writes have byte-for-byte readback. No bootable Windows ISO is supplied to this session; no full Windows installer boot in a VM is attested. The local environment has no QEMU and package installation was unavailable. Existing boot helper tests do not constitute a VM boot test. Secure Boot is unverified for all modes. This is a software-validation limitation, not a hardware test silently passed to the user.
 
-Not hardware-verified: real SMART passthrough, failing HDD reads, external-media formatting/repair, raw hybrid ISO writing to a physical USB, BIOS/UEFI/Secure Boot execution, and recovered user files. Split WIM uses DISM integrity processing, not independent byte-for-byte readback of split WIM data. Windows writes are restricted to enumerated external USB/SD/MMC; Linux-hosted storage writes remain unsupported.
+## Remaining implementation limits
+- NTFS compressed/encrypted/named streams and ATTRIBUTE_LIST extensions are skipped with reasons. A fragmented `$MFT` works when its full runs fit in its base DATA attribute; external MFT extension records are not followed.
+- Deleted FAT32 subdirectory chains are skipped. Surviving live folders and long-name evidence are used; deleted LFN association is tentative. Retained FAT chains may be stale, so FAT32 outputs are candidates.
+- GPT/MBR partition addressing assumes 512-byte image sectors; 4Kn partition-table images need conversion or future support. Raw rescue can use 4096-byte sectors.
+- Structural scan budgets: 2 million records by default, at most 10 million through the C++ API; bounded GPT tables/EBR chains/directories. Limits generate partial results rather than complete success.
+- No overwrite/TRIM reversal, firmware flashing or physical disk repair.
+- Source-image size/mtime and raw source serial/size checks do not turn a changing live filesystem into a snapshot.
 
-Recovery scope: regular image sources only, up to 64 MiB/file and 10000 files. FAT32 volume images and primary MBR partitions are supported; NTFS, exFAT, GPT recovery, extended partitions, original long names/folders and fragmented-file reconstruction are not. PNG chunks are CRC-checked; JPEG and FAT32 content remains a recovery candidate requiring inspection. Overwritten or TRIM-discarded original bytes cannot be reconstructed by these engines.
+Hardware-only procedure: [HARDWARE-TESTS-AR.md](HARDWARE-TESTS-AR.md).

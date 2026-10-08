@@ -37,6 +37,12 @@ public:
  file.setFileName(path);return file.open(QIODevice::ReadOnly);
 #endif
  }
+ int logicalSector(){
+#ifdef Q_OS_WIN
+  if(handle!=INVALID_HANDLE_VALUE){QByteArray data(2048,0);DWORD got=0;if(DeviceIoControl(handle,IOCTL_DISK_GET_DRIVE_GEOMETRY_EX,nullptr,0,data.data(),DWORD(data.size()),&got,nullptr)&&got>=sizeof(DISK_GEOMETRY_EX))return int(reinterpret_cast<const DISK_GEOMETRY_EX*>(data.constData())->Geometry.BytesPerSector);return 0;}
+#endif
+  return 512;
+ }
  QString identity(qint64 expected){
   if(file.isOpen()&&isRegularSource(file.fileName())){
    QFileInfo info(file);if(file.size()!=expected)return {};QCryptographicHash hash(QCryptographicHash::Sha256);
@@ -125,6 +131,7 @@ QJsonObject rescueMedia(const QString &device,qint64 bytes,const QString &dest,c
  if(!isRegularSource(device)&&!outputIsSeparate(device,dest,options.resume))return fail("Destination disk separation could not be verified.");
  if(QFileInfo(device).canonicalFilePath()==QFileInfo(dest).canonicalFilePath()&&QFileInfo(dest).exists())return fail("Source and destination must differ.");
  Reader reader;if(!reader.open(device))return fail("Cannot open source read-only.");
+ if(!isRegularSource(device)&&reader.logicalSector()!=options.sectorBytes)return fail("Selected sector size does not match the actual logical sector size.");
  QString identity=reader.identity(bytes);if(identity.isEmpty())return fail("Cannot verify source identity and actual length.");
  RescueSource source{bytes,identity,[&](qint64 offset,qint64 count){QByteArray b(count,0);auto n=reader.read(offset,b.data(),count);if(n!=count)return QByteArray{};return b;}};
  return rescueStream(source,dest,options,context);

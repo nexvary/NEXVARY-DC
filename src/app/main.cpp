@@ -20,7 +20,7 @@ int main(int argc,char **argv) {
  QQuickStyle::setStyle("Basic");
  QGuiApplication app(argc,argv);
  app.setWindowIcon(QIcon(":/assets/icons/brand.png"));
- app.setOrganizationName("NEXVARY");app.setApplicationName("Disk Care");app.setApplicationVersion("0.3.0");
+ app.setOrganizationName("NEXVARY");app.setApplicationName("Disk Care");app.setApplicationVersion("0.4.0");
  const auto args=app.arguments();
  const bool smoke=args.contains("--smoke-test");
  if(smoke) QStandardPaths::setTestModeEnabled(true);

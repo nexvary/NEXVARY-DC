@@ -25,7 +25,7 @@
 | System disk selected for erase | Windows helper rejects boot/system/offline/read-only/internal disks and disks holding pagefiles, source ISO, application or user profile |
 | Permission/UAC denied | current read engines report errors; user-invoked UAC relaunch; denied elevation does not start mutation |
 | Image changes during reading | detect size changes and short read; same-size external modification is not fully detected, so use an immutable image |
-| Power loss during copying | destination may remain partial after process/crash/power loss; only completed report + verified SHA establishes success; resume is not implemented |
+| Power loss during copying | destination may remain partial after process/crash/power loss; only completed report + verified SHA establishes success; rescue uses durable JSONL checkpoints; regular image copying remains restart-only |
 | Counterfeit flash wraps existing allocations | explicit backup requirement before any write test; test-file isolation cannot protect data from dishonest firmware |
 | Windows raw locks, 4Kn alignment, NVMe namespaces | reads use 1 MiB blocks; physical length must be 512-byte aligned. 4Kn, bridge and physical-device behavior still need hardware tests |
 | CI lacks physical hardware | fault-injection tests and image fixtures only; physical success remains unverified |
@@ -38,5 +38,12 @@ SQLite stores the last 50 displayed records (database itself retains all records
 ## Storage confirmation
 Preparation snapshots enumerated metadata and creates a single-use token valid for 180 seconds. Execution consumes the token and requires exact device-path text plus acknowledgement. The trusted helper re-enumerates before commands and compares identifiers, capacity and partition offsets/sizes. Only external USB/SD/MMC media are writable. The source ISO is mounted and inspected before erasure. Mutation completion is not treated as proof of firmware or physical-surface repair.
 
-## Rescue imaging
+## Legacy 0.3 rescue imaging (superseded)
 Unreadable 1 MiB chunks are zero-filled and listed explicitly. Cancellation retains a partial image and read map. Read maps are not auto-resume maps. A full output reread compares SHA-256 with the written stream; destination extents must exclude the source physical disk. Test fixtures use regular files, not physical drives. No reads are claimed to be snapshots of a live changing filesystem.
+
+## 0.4 recovery architecture
+`Partitions` bounds GPT/MBR/EBR extents. `FilesystemRecovery` reads NTFS, exFAT and FAT32 metadata independently of the UI, validates allocation and streams recovered content in buffers of at most 1 MiB. Bounded directory/MFT indexes and runlists consume metadata memory; contents are not held in full. `Recovery` streams signature candidates and PNG CRC checks.
+
+`RescueEngine` accepts a read-only transport. Each committed 1 MiB block is flushed and synchronized before its offset/hash/bad-sector row is flushed and synchronized to JSONL. On resume the header's source and destination identities are compared; all committed output bytes and range coverage are validated before modifying uncommitted tails. A final independent reread compares the whole output hash. A crash may lose the currently uncommitted block; it is reread, never assumed successful. Firmware/controller caching remains a physical limitation.
+
+No new third-party recovery binary/library is bundled. The implementation uses documented filesystem structures; upstream implementation code was not copied. See RESEARCH.md for structure references. Native parsers intentionally reject unsupported NTFS attribute-list extensions, encryption and compression rather than guessing physical runs.

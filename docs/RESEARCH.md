@@ -22,3 +22,9 @@ Sources reviewed before implementation. These are candidates, not a claim that t
 
 ## Distribution decision
 Start with original code and optional, separately installed smartctl. Before bundling or modifying any engine, record its exact revision, full license, dependencies, notices and source-delivery obligations. Separate process execution alone is not treated as an automatic exemption from license obligations. Qt distribution obligations also require review before a commercial release. Firmware download rights must be checked separately from command-tool licensing.
+
+## 0.4 native recovery implementation references
+- Microsoft NTFS attribute records and mapping pairs: https://learn.microsoft.com/en-us/windows/win32/devnotes/attribute-record-header
+- Microsoft NTFS record/fixup structure: https://learn.microsoft.com/en-us/windows/win32/devnotes/file-record-segment-header
+- Microsoft exFAT specification: https://learn.microsoft.com/en-us/windows/win32/fileio/exfat-specification
+These are format references. No external recovery engine is bundled or linked; existing Qt/smartmontools redistribution notices are unchanged.

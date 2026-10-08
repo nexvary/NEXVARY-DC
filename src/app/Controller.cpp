@@ -146,7 +146,7 @@ void Controller::cancel(){if(interruptible())m_cancel=true;}
 QString Controller::fileUrl(const QString &path) const {return QUrl::fromLocalFile(path).toString();}
 QString Controller::localPath(const QString &url) const {QUrl u(url);return u.isLocalFile()?u.toLocalFile():url;}
 void Controller::setResult(const QJsonObject &input) {
- auto result=input;result.insert("appVersion","0.3.0");result.insert("recordedAt",QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+ auto result=input;result.insert("appVersion","0.4.0");result.insert("recordedAt",QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
  m_report=QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Indented));
  if(m_db.isOpen()) {QSqlQuery q(m_db);q.prepare("INSERT INTO operations(created,operation,report) VALUES(?,?,?)");q.addBindValue(result.value("recordedAt").toString());q.addBindValue(result.value("operation").toString(m_operation));q.addBindValue(m_report);if(!q.exec()){result.insert("historySaved",false);m_report=QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Indented));}}
  m_result=result.toVariantMap();
