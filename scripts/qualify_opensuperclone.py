@@ -16,7 +16,7 @@ def run(args, **kwargs):
     return subprocess.check_output(args, text=True, timeout=600, **kwargs)
 
 
-def qualify(output):
+def qualify(output, direct=False):
     output = Path(output).resolve()
     output.mkdir(parents=True, exist_ok=True)
     source, build = output / 'source', output / 'build'
@@ -30,6 +30,10 @@ def qualify(output):
     license_text = (source / 'LICENSE').read_text()
     if 'Version 2, June 1991' not in license_text:
         raise ValueError('Expected GPLv2 notice absent; re-review license')
+    if direct:
+        from osc_adapter_patch import apply
+        apply(source)
+        (output / 'adapter.patch').write_text(run(['git','-C',str(source),'diff']))
     run(['cmake', '-S', str(source), '-B', str(build), '-DCMAKE_BUILD_TYPE=Release'])
     run(['cmake', '--build', str(build), '--parallel', '2'])
     executable = build / 'src/opensuperclone/opensuperclone'
@@ -37,7 +41,7 @@ def qualify(output):
     help_text = run([str(executable), '--help'])
     if 'OpenSuperClone' not in version or '2.5' not in version or '--tool' not in help_text:
         raise ValueError('Engine identity/help mismatch')
-    report = dict(upstream=UPSTREAM, commit=actual, license='GPL-2.0',
+    report = dict(directAdapter=1 if direct else 0, upstream=UPSTREAM, commit=actual, license='GPL-2.0',
                   binarySHA256=hashlib.sha256(executable.read_bytes()).hexdigest(),
                   version=version, tested=['source_build', 'version', 'help'],
                   diskAccessTested=False, directAHCITested=False, relayTested=False,
@@ -54,4 +58,6 @@ def qualify(output):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', required=True)
-    qualify(parser.parse_args().output)
+    parser.add_argument('--direct', action='store_true', help='Build restricted AHCI adapter and retain GPL source patch')
+    args = parser.parse_args()
+    qualify(args.output, args.direct)

@@ -53,3 +53,7 @@ Windows visual proof uses the native Windows platform, not the font-less offscre
 - Separately builds pinned OpenSuperClone v2.5.0 (87a25d257e44337ae15f863e59b0062311a5c329),
   verifies help/version, retains license and exact upstream source archive. Does not
   install/load its driver, access a disk, execute its scripts or certify direct AHCI/relay.
+
+## 0.7.0 direct AHCI qualification
+
+Eight additional deterministic Python tests cover streaming SHA-256, cancellation/resume, crash tails, bad-sector fallback/retry budget, corruption, changed identities, image bounds, insufficient space, OS-visible controller refusal and USBRelay transfer errors/restoration. A separate QEMU AHCI test performs actual MMIO/DMA reads through the restricted engine and checks SHA-256 and resumed output. Source is attached read-only on the host. Physical SATA timing, DMA compatibility and electrical relay operation remain hardware tests. No firmware repair family is certified; full Windows boot and Secure Boot remain outstanding, not claimed as tested.

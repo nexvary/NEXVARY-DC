@@ -1,4 +1,4 @@
-NEXVARY DISK CARE 0.6.0
+NEXVARY DISK CARE 0.7.0
 Storage diagnostics, metadata recovery and verified imaging
 
 INCLUDED FEATURES
@@ -43,3 +43,7 @@ Windows can restore priority of an existing GRUB/shim UEFI entry, with BCD/firmw
 Selective retry reads only previously unreadable disk sectors after full prior-image/map validation; original evidence is preserved and a separate full-size image is required.
 SMART capability reports describe observed protocol/model/sector data and explicitly report no certified firmware repair profiles.
 OpenSuperClone is evaluated separately on Linux; it is not bundled or linked into this Windows package.
+
+Separate expert Linux direct-AHCI helper: exact source identity, read-only commands and resumable SHA-256 map.
+Optional identified USBRelay for source-only +5V/+12V; electrical wiring requires physical testing.
+Windows bundles helper sources/instructions, not a native AHCI transport. No certified firmware/SA/translator family.

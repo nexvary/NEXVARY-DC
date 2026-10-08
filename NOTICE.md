@@ -11,3 +11,6 @@ App-local Microsoft Visual C++ runtime DLLs are redistributed from the MSVC redi
 Arabic Inno Setup translation comes from jrsoftware/issrc Files/Languages/Arabic.isl; translator attribution is retained in that file. Other-company names identify compatibility and upstream tools; they do not imply endorsement.
 
 Offline Linux boot repair invokes the live distribution's installed GNU GRUB and efibootmgr tools. No GRUB binaries are bundled in the Windows installer or portable archive; obtain those tools and their license notices from your Linux distribution. The bundled recovery helper uses the Python standard library.
+
+## Restricted OpenSuperClone adapter (0.7.0)
+The separate Linux adapter executes OpenSuperClone stable v2.5.0, commit 87a25d257e44337ae15f863e59b0062311a5c329, GPL-2.0-or-later, as an external process. Modified C sources are distributed as upstream source archive plus adapter.patch and LICENSE; they are not linked into the Qt executable. Build script retains the exact patch and binary SHA-256. Controller/port selection modifications carry the same GPL terms. USBRelay protocol reference is upstream usbrelay.c/usbrelay.h; no generic firmware scripts are exposed.

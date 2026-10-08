@@ -34,3 +34,5 @@ Copy-Item packaging/Qt-*.txt (Join-Path $OutputDir 'licenses/Qt') -Force
 
 New-Item -ItemType Directory -Force (Join-Path $OutputDir "recovery-tools") | Out-Null
 Copy-Item scripts/boot_repair.py (Join-Path $OutputDir "recovery-tools/boot_repair.py") -Force
+
+Copy-Item scripts/direct_rescue.py,scripts/relay_power.py,scripts/qualify_opensuperclone.py,scripts/osc_adapter_patch.py (Join-Path $OutputDir "recovery-tools") -Force

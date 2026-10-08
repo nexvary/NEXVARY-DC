@@ -46,7 +46,7 @@ jobs:
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
-          name: OpenSuperClone-qualification-0.6.0
+          name: OpenSuperClone-qualification-0.7.0
           path: |
             out/osc-qualification/qualification.json
             out/osc-qualification/help.txt
@@ -61,6 +61,8 @@ jobs:
         if: runner.os == 'Windows'
       - name: Boot repair safety tests
         run: python -m unittest discover -s tests/boot -v
+      - name: Direct transport and relay safety tests
+        run: python -m unittest discover -s tests/direct -v
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
       - name: Build
@@ -89,7 +91,7 @@ jobs:
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
-          name: NEXVARY-DC-UI-0.6.0
+          name: NEXVARY-DC-UI-0.7.0
           path: out/ui/
           if-no-files-found: error
       - name: Capture Windows boot repair UI
@@ -120,7 +122,7 @@ jobs:
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: NEXVARY-DC-Windows-Repair-UI-0.6.0
+          name: NEXVARY-DC-Windows-Repair-UI-0.7.0
           path: out/ui-windows/
           if-no-files-found: error
       - name: Deploy Windows
@@ -165,7 +167,7 @@ jobs:
         shell: pwsh
         run: |
           $destination = Join-Path $env:RUNNER_TEMP 'NEXVARY-DC-installed-test'
-          $setup = (Resolve-Path out/NEXVARY-DC-0.6.0-Setup.exe).Path
+          $setup = (Resolve-Path out/NEXVARY-DC-0.7.0-Setup.exe).Path
           $install = Start-Process $setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/NOICONS',"/DIR=$destination") -PassThru
           if (!$install.WaitForExit(60000)) { $install.Kill(); throw "Installer timeout" }
           if ($install.ExitCode -ne 0) { throw "Installation failed: $($install.ExitCode)" }
@@ -183,9 +185,9 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Compress-Archive -Path out/portable/* -DestinationPath out/NEXVARY-DC-0.6.0-Portable.zip
-          $files=@('out/NEXVARY-DC-0.6.0-Setup.exe','out/NEXVARY-DC-0.6.0-Portable.zip')
-          $manifest=@{version='0.6.0';commit=$env:GITHUB_SHA;run=$env:GITHUB_RUN_ID;files=@()}
+          Compress-Archive -Path out/portable/* -DestinationPath out/NEXVARY-DC-0.7.0-Portable.zip
+          $files=@('out/NEXVARY-DC-0.7.0-Setup.exe','out/NEXVARY-DC-0.7.0-Portable.zip')
+          $manifest=@{version='0.7.0';commit=$env:GITHUB_SHA;run=$env:GITHUB_RUN_ID;files=@()}
           foreach($path in $files){$item=Get-Item $path;$hash=(Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant();$manifest.files+=@{name=$item.Name;bytes=$item.Length;sha256=$hash}}
           $manifest | ConvertTo-Json -Depth 5 | Set-Content out/release-manifest.json -Encoding utf8
           $manifest.files | ForEach-Object {"$($_.sha256)  $($_.name)"} | Set-Content out/SHA256SUMS.txt -Encoding ascii
@@ -194,10 +196,10 @@ jobs:
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: NEXVARY-DC-Release-0.6.0
+          name: NEXVARY-DC-Release-0.7.0
           path: |
-            out/NEXVARY-DC-0.6.0-Setup.exe
-            out/NEXVARY-DC-0.6.0-Portable.zip
+            out/NEXVARY-DC-0.7.0-Setup.exe
+            out/NEXVARY-DC-0.7.0-Portable.zip
             out/release-manifest.json
             out/SHA256SUMS.txt
           if-no-files-found: error
@@ -205,20 +207,20 @@ jobs:
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: NEXVARY-DC-Installer-0.6.0
-          path: out/NEXVARY-DC-0.6.0-Setup.exe
+          name: NEXVARY-DC-Installer-0.7.0
+          path: out/NEXVARY-DC-0.7.0-Setup.exe
           if-no-files-found: error
       - name: Upload Windows artifacts
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: NEXVARY-DC-Portable-0.6.0
+          name: NEXVARY-DC-Portable-0.7.0
           path: out/portable/
           if-no-files-found: error
 
   linux-vm:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - name: Install virtual firmware test tools
@@ -231,11 +233,31 @@ jobs:
         run: python3 tests/vm/boot_linux.py
       - name: Repair GRUB and boot the repaired disk in BIOS and UEFI
         run: sudo python3 tests/vm/repair_boot.py
+      - name: Build restricted direct AHCI adapter
+        run: |
+          sudo apt-get install -y libgtk-3-dev libusb-dev libconfig-dev gettext xxd pkg-config
+          python3 scripts/qualify_opensuperclone.py --direct --output out/osc-direct
+      - name: Read isolated AHCI source with DMA and resume in QEMU
+        run: sudo python3 tests/vm/direct_ahci.py
+      - name: Upload direct engine and corresponding GPL sources
+        uses: actions/upload-artifact@v4
+        with:
+          name: NEXVARY-Direct-AHCI-0.7.0
+          path: |
+            scripts/direct_rescue.py
+            scripts/relay_power.py
+            docs/DIRECT-AHCI-AR.md
+            out/osc-direct/build/src/opensuperclone/opensuperclone
+            out/osc-direct/qualification.json
+            out/osc-direct/adapter.patch
+            out/osc-direct/upstream-source.tar.gz
+            out/osc-direct/LICENSE
+          if-no-files-found: error
       - name: Upload VM proof
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: NEXVARY-DC-VM-0.6.0
+          name: NEXVARY-DC-VM-0.7.0
           path: |
             out/vm/*.png
             out/vm/*.ppm
@@ -243,6 +265,8 @@ jobs:
             out/vm/*.json
             out/boot-repair-vm/*.txt
             out/boot-repair-vm/results.json
+            out/direct-vm/serial.txt
+            out/direct-vm/results.json
           if-no-files-found: warn
 
   release:
@@ -255,8 +279,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: NEXVARY-DC-Release-0.6.0
+          name: NEXVARY-DC-Release-0.7.0
           path: release
+      - uses: actions/download-artifact@v4
+        with:
+          name: NEXVARY-Direct-AHCI-0.7.0
+          path: direct-engine
+      - name: Package qualified Linux helper and corresponding sources
+        run: tar -czf release/NEXVARY-DC-0.7.0-Linux-Direct-AHCI.tar.gz -C direct-engine .
       - name: Publish verified binaries
         env:
           GH_TOKEN: ${{ github.token }}
@@ -265,9 +295,12 @@ jobs:
           import json, os, pathlib, hashlib
           data=json.loads(pathlib.Path('release/release-manifest.json').read_text(encoding='utf-8-sig'))
           assert data['commit']==os.environ['GITHUB_SHA']
+          p=pathlib.Path('release/NEXVARY-DC-0.7.0-Linux-Direct-AHCI.tar.gz')
+          data['files'].append({'name':p.name,'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()})
+          pathlib.Path('release/release-manifest.json').write_text(json.dumps(data,indent=2))
           for row in data['files']:
               p=pathlib.Path('release')/row['name']
               assert p.stat().st_size==row['bytes']
               assert hashlib.sha256(p.read_bytes()).hexdigest()==row['sha256']
           PYVERIFY
-          gh release create v0.6.0 release/* --target "$GITHUB_SHA" --title 'NEXVARY Disk Care 0.6.0' --notes-file docs/RELEASE-0.6.0.md
+          gh release create v0.7.0 release/* --target "$GITHUB_SHA" --title 'NEXVARY Disk Care 0.7.0' --notes-file docs/RELEASE-0.7.0.md
