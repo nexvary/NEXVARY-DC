@@ -1,9 +1,9 @@
 $ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
-$serial=[IO.FileStream]::new('\\.\COM1',[IO.FileMode]::Open,[IO.FileAccess]::Write,[IO.FileShare]::ReadWrite)
+$serial=[IO.Ports.SerialPort]::new('COM1',115200,[IO.Ports.Parity]::None,8,[IO.Ports.StopBits]::One)
+$serial.Open()
 function Proof([string]$text){
- $data=[Text.Encoding]::ASCII.GetBytes($text+"`r`n")
- $serial.Write($data,0,$data.Length);$serial.Flush()
+ $serial.WriteLine($text);$serial.BaseStream.Flush()
 }
 function Request($disk,[string]$action) {
  return @{number=[int]$disk.Number;device="\\.\PHYSICALDRIVE$($disk.Number)";uniqueId=[string]$disk.UniqueId;serial=[string]$disk.SerialNumber;bytes=[long]$disk.Size;action=$action;source='C:\source.iso';appDirectory='C:\Nexvary';partition=0;offset=0;partitionBytes=0;filesystem='FAT32';style='MBR'}

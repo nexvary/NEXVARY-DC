@@ -59,6 +59,17 @@ jobs:
           cache: true
       - uses: ilammy/msvc-dev-cmd@v1
         if: runner.os == 'Windows'
+      - name: Parse all PowerShell sources
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $failed=@()
+          Get-ChildItem scripts,tests,packaging -Filter *.ps1 -Recurse | ForEach-Object {
+            $tokens=$null;$errors=$null
+            [System.Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$tokens,[ref]$errors) | Out-Null
+            if($errors.Count){$errors | Format-List | Out-String | Write-Host;$failed+=$_.FullName}
+          }
+          if($failed.Count){throw ('PowerShell parse failures: '+($failed -join ', '))}
       - name: Boot repair safety tests
         run: python -m unittest discover -s tests/boot -v
       - name: Direct transport and relay safety tests
