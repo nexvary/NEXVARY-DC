@@ -39,6 +39,9 @@ for line in subprocess.check_output(['modprobe','--set-version',version,'--show-
     if target.suffix=='.zst':
         with target.with_suffix('').open('wb') as stream:subprocess.run(['zstd','-dc',str(source)],stdout=stream,check=True)
     else:shutil.copyfile(source,target)
+for name in ['ls','grep','sort']:
+    target=ram/'bin'/name
+    if not target.exists(): target.symlink_to('busybox')
 subprocess.run(['depmod','--basedir',str(ram),version],check=True)
 data=bytes(range(256))*8192
 source=out/'source.img';source.write_bytes(data)
@@ -76,6 +79,7 @@ print('DC_DIRECT_AHCI_OK='+json.dumps({'sha256':actual,'resume':True,'identityRe
 /bin/busybox mount -t proc proc /proc
 /bin/busybox mount -t sysfs sysfs /sys
 /bin/busybox mount -t devtmpfs devtmpfs /dev
+/bin/busybox mount -t tmpfs -o size=64m tmpfs /tmp
 modprobe ahci
 python3 /direct-guest.py
 sync

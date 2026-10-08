@@ -204,7 +204,7 @@ def restore_progress(destination, identity):
     return position, bad
 
 
-def rescue(source, destination, resume=False, retries=1, cancel=lambda: False, cycle=None):
+def rescue(source, destination, resume=False, retries=1, cancel=lambda: False, cycle=None, on_progress=lambda _: None):
     if type(retries) is not int or not 0 <= retries <= 5:
         raise ValueError('Retries must be 0..5')
     identity = source.identity
@@ -267,6 +267,7 @@ def rescue(source, destination, resume=False, retries=1, cancel=lambda: False, c
             progress.flush(); os.fsync(progress.fileno())
             position += length
             bad_bytes += sum(size for _,size in bad)
+            on_progress({'bytes':position,'total':identity['bytes'],'badBytes':bad_bytes})
     return {'cancelled':position < identity['bytes'], 'bytes':position, 'badBytes':bad_bytes,
             'contentVerified':False, 'status':'read-complete' if not bad_bytes else 'incomplete'}
 
@@ -283,15 +284,24 @@ def main():
     args = parser.parse_args()
     if os.name != 'posix' or os.geteuid() != 0: raise ValueError('Requires root in a live Linux environment')
     stopped = [False]
-    # Subprocess ignores SIGINT and performs cleanup; parent stops at next boundary.
+    # Child session is isolated from terminal cancellation; parent stops after DMA cleanup.
     signal.signal(signal.SIGINT, lambda *_: stopped.__setitem__(0, True))
+    signal.signal(signal.SIGTERM, lambda *_: stopped.__setitem__(0, True))
     source = AHCI(args.engine, args.qualification, json.loads(Path(args.identity).read_text()))
     cycle = None
     if args.relay:
         from relay_power import RelayPower
         relay = RelayPower.connect(json.loads(Path(args.relay).read_text()))
-        cycle = relay.cycle
-    print(json.dumps(rescue(source,args.output,args.resume,args.retries,lambda:stopped[0],cycle)))
+        def cycle():
+            if relay.cycles < relay.max_cycles:
+                relay.cycle()
+    import sys
+    last_progress = [0.0]
+    def progress(row):
+        if time.monotonic()-last_progress[0] >= 10 or row['bytes'] == row['total']:
+            print(json.dumps(row),file=sys.stderr,flush=True)
+            last_progress[0] = time.monotonic()
+    print(json.dumps(rescue(source,args.output,args.resume,args.retries,lambda:stopped[0],cycle,progress)))
 
 
 if __name__ == '__main__':

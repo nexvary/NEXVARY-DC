@@ -299,6 +299,14 @@ jobs:
       - name: Boot installed evaluation Windows and inspect guest Secure Boot
         shell: pwsh
         run: ./tests/vm/windows_boot.ps1 -Mode ${{ matrix.mode }}
+      - name: Collect failed VM preparation diagnostics
+        if: always()
+        shell: pwsh
+        run: |
+          $mode='${{ matrix.mode }}'
+          $source=Join-Path $env:RUNNER_TEMP ('dc-windows-'+$mode)
+          New-Item -ItemType Directory -Force "out/windows-vm-$mode" | Out-Null
+          if(Test-Path $source){Copy-Item "$source/*.log","$source/*.txt","$source/*.json" "out/windows-vm-$mode" -ErrorAction SilentlyContinue}
       - name: Retain Windows VM proof without Microsoft images
         if: always()
         uses: actions/upload-artifact@v4
