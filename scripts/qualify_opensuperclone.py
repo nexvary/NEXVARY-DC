@@ -5,6 +5,7 @@ No kernel driver is installed or loaded and no upstream source is linked into DC
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 
@@ -47,7 +48,11 @@ def qualify(output, direct=False):
         identity = dict(model='QEMU HARDDISK',serial='DC_TEST_SERIAL',firmware='2.5+',bytes=2097152)
         script = output / 'read-check.osc'
         script.write_text(read_script(identity,0,2048,'/tmp/dc_read_check.bin'))
-        run([str(executable),'--tool','--check','--file',str(script)])
+        command = [str(executable),'--tool','--check','--file',str(script)]
+        # Upstream requires root even for syntax checking; --check executes no I/O.
+        if os.geteuid() != 0:
+            command = ['sudo','-n',*command]
+        run(command)
         tested.append('generated_read_script_syntax')
     report = dict(directAdapter=1 if direct else 0, upstream=UPSTREAM, commit=actual, license='GPL-2.0',
                   binarySHA256=hashlib.sha256(executable.read_bytes()).hexdigest(),
