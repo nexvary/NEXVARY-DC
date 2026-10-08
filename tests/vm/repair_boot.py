@@ -59,7 +59,7 @@ modules = ram / 'lib/modules' / version
 modules.mkdir(parents=True, exist_ok=True)
 for path in pathlib.Path('/lib/modules', version).glob('modules.*'):
     shutil.copyfile(path, modules / path.name)
-for module in ['virtio_pci', 'virtio_blk', 'ext4', 'vfat', 'efivarfs']:
+for module in ['virtio_pci', 'virtio_blk', 'ext4', 'vfat', 'efivarfs', 'nls_cp437', 'nls_iso8859_1', 'nls_utf8']:
     deps = call(['modprobe', '--set-version', version, '--show-depends', module])
     for line in deps.splitlines():
         if line.startswith('insmod '):
@@ -108,6 +108,9 @@ modprobe virtio_pci
 modprobe virtio_blk
 modprobe ext4
 modprobe vfat
+modprobe nls_cp437
+modprobe nls_iso8859_1
+modprobe nls_utf8
 modprobe efivarfs
 sleep 2
 if cat /proc/cmdline | /bin/busybox grep -q nexvary.installed; then
