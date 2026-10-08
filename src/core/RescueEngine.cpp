@@ -6,6 +6,7 @@
 #include <QJsonArray>
 #include <QCryptographicHash>
 #include <QDir>
+#include <algorithm>
 #ifdef Q_OS_WIN
 #include <windows.h>
 #include <io.h>
@@ -85,4 +86,51 @@ QJsonObject rescueStream(RescueSource &source,const QString &destination,const R
  }
  return {{"status",status},{"operation","media_rescue"},{"destination",info.absoluteFilePath()},{"readMap",mapPath},{"processedBytes",double(processed)},{"unreadableBytes",double(failed)},{"unreadableRanges",bad},{"rangeSummaryTruncated",rangesTruncated},{"allRangesInReadMap",true},{"granularityBytes",options.sectorBytes},{"retries",options.retries},{"resumed",options.resume},{"sha256Written",QString::fromLatin1(hash.result().toHex())},{"imageReadbackVerified",verified},{"partialImageRetained",processed<source.bytes},{"physicalRepairPerformed",false},{"message",error.isEmpty()?"Keep image and JSONL read map together. Unreadable sectors are zero-filled. Complete readback verifies the image copy, not original content or physical repair.":error}};
 }
+QJsonObject retryRescueStream(RescueSource &source,const QString &previous,const QString &destination,const RescueOptions &options,const Context &ctx){
+ auto fail=[](const QString &m){return QJsonObject{{"status","error"},{"operation","media_retry"},{"message",m}};};
+ if(source.bytes<=0||source.bytes>((qint64(1)<<53)-4096)||!source.read||source.identity.isEmpty()||!QList<int>{512,4096}.contains(options.sectorBytes)||options.retries<0||options.retries>5)return fail("Invalid source or retry options");
+ if(!isRegularSource(previous)||!isRegularSource(previous+".readmap.jsonl")||QFileInfo(previous).absoluteFilePath()==QFileInfo(destination).absoluteFilePath())return fail("Choose an existing image/map and a different destination. Original evidence is preserved.");
+ QFile image(previous),map(previous+".readmap.jsonl");
+ if(!image.open(QIODevice::ReadOnly)||!map.open(QIODevice::ReadOnly)||image.size()!=source.bytes)return fail("A full-length prior image and original map are required; finish the first rescue before selective retry.");
+ QFile existingDestination(destination);if(existingDestination.open(QIODevice::ReadOnly)&&fileIdentity(existingDestination)==fileIdentity(image))return fail("Destination aliases original image; refused");existingDestination.close();
+ auto line=map.readLine(65536);if(!line.endsWith('\n'))return fail("Invalid map header");auto h=QJsonDocument::fromJson(line).object();
+ if(h.value("schema").toInt()!=1||h.value("identity").toString()!=source.identity||h.value("sourceBytes").toString()!=QString::number(source.bytes)||h.value("destination").toString()!=QFileInfo(previous).absoluteFilePath()||h.value("destinationId").toString()!=fileIdentity(image)||h.value("sectorBytes").toInt()!=options.sectorBytes)return fail("Prior image/source/map identity or sector size changed; selective retry refused.");
+ struct Range{qint64 begin,end;};QList<Range> bad; qint64 processed=0,badBytes=0;
+ // Verify every committed chunk before opening a new destination or reading failed media.
+ while(!map.atEnd()){
+  if(ctx.cancelled())return QJsonObject{{"status","cancelled"},{"operation","media_retry"},{"message","Map validation cancelled; no source sectors retried."}};
+  line=map.readLine(1024*1024);if(!line.endsWith('\n'))return fail("Partial or oversized map row; finish the original rescue first");
+  auto e=QJsonDocument::fromJson(line).object();bool ok=false;auto offset=e.value("offset").toString().toLongLong(&ok);auto count=e.value("bytes").toInt();
+  if(!ok||offset!=processed||count<=0||count!=qMin(Chunk,source.bytes-processed)||!image.seek(offset))return fail("Corrupt or out-of-bounds map");auto block=image.read(count);
+  if(block.size()!=count||digest(block)!=e.value("sha256").toString()||!e.value("bad").isArray())return fail("Original image SHA-256/map mismatch");
+  qint64 end=offset;
+  for(auto value:e.value("bad").toArray()){
+   auto a=value.toArray();if(a.size()!=2||!a[0].isDouble()||!a[1].isDouble())return fail("Invalid failed range");double pd=a[0].toDouble(-1),ld=a[1].toDouble(-1);
+   if(pd<0||ld<=0||pd>source.bytes||ld>source.bytes||pd!=double(qint64(pd))||ld!=double(qint64(ld)))return fail("Invalid failed range number");qint64 pos=qint64(pd),len=qint64(ld);
+   if(options.sectorBytes<=0||pos<end||pos%options.sectorBytes||len%options.sectorBytes||pos>offset+count||len>offset+count-pos||block.mid(pos-offset,len)!=QByteArray(len,0))return fail("Failed range outside recorded zero-filled sectors");
+   if(!bad.isEmpty()&&bad.last().end==pos)bad.last().end=pos+len;else bad.append({pos,pos+len});badBytes+=len;end=pos+len;
+   if(bad.size()>2000000)return fail("Too many disjoint failed ranges; split the recovery task");
+  }
+  processed+=count;ctx.update(processed,source.bytes*3);
+ }
+ if(processed!=source.bytes)return fail("Incomplete map; resume the original rescue first");
+ if(bad.isEmpty())return fail("No unreadable sectors recorded; selective retry is unnecessary");
+ qint64 sourceReadBytes=0;auto overlaps=[&](qint64 pos,qint64 count){
+  auto it=std::lower_bound(bad.cbegin(),bad.cend(),pos,[](const Range &r,qint64 p){return r.end<=p;});return it!=bad.cend()&&it->begin<pos+count;
+ };
+ RescueSource selective{source.bytes,source.identity,[&](qint64 pos,qint64 count)->QByteArray{
+  if(pos<0||count<=0||pos>source.bytes||count>source.bytes-pos)return {};
+  if(overlaps(pos,count)){
+   // Force the existing sector retry path; never read healthy physical sectors.
+   if(count!=options.sectorBytes)return {};
+   sourceReadBytes+=count;return source.read(pos,count);
+  }
+  if(!image.seek(pos))return {};return image.read(count);
+ }};
+ Context progress{ctx.cancel,[&](qint64 n,qint64){ctx.update(source.bytes+n,source.bytes*3);}};
+ auto result=rescueStream(selective,destination,options,progress);result.insert("operation","media_retry");result.insert("previousImage",QFileInfo(previous).absoluteFilePath());result.insert("originalImagePreserved",true);result.insert("previousUnreadableBytes",double(badBytes));result.insert("physicalReadAttemptBytes",double(sourceReadBytes));
+ if(result.value("imageReadbackVerified").toBool())result.insert("newlyRecoveredBytes",double(badBytes)-result.value("unreadableBytes").toDouble());
+ return result;
+}
+
 }

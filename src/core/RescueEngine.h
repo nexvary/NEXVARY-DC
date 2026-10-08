@@ -9,4 +9,6 @@ struct RescueSource {
  std::function<QByteArray(qint64,qint64)> read;
 };
 QJsonObject rescueStream(RescueSource &source,const QString &destination,const RescueOptions &options,const Context &context={});
+// Reuses verified healthy image sectors; physical reads target only previously failed sectors.
+QJsonObject retryRescueStream(RescueSource &source,const QString &previous,const QString &destination,const RescueOptions &options,const Context &context={});
 }

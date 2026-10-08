@@ -38,7 +38,21 @@ jobs:
       - uses: actions/checkout@v4
       - name: Linux build dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev libxkbcommon-dev libxcb-cursor0
+        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev libxkbcommon-dev libxcb-cursor0 cmake libgtk-3-dev libusb-dev libconfig-dev gettext xxd pkg-config
+      - name: Qualify pinned OpenSuperClone source without disk access
+        if: runner.os == 'Linux'
+        run: python3 scripts/qualify_opensuperclone.py --output out/osc-qualification
+      - name: Retain OpenSuperClone qualification and corresponding source
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenSuperClone-qualification-0.6.0
+          path: |
+            out/osc-qualification/qualification.json
+            out/osc-qualification/help.txt
+            out/osc-qualification/LICENSE
+            out/osc-qualification/upstream-source.tar.gz
+          if-no-files-found: error
       - uses: jurplel/install-qt-action@v4
         with:
           version: '6.8.3'
@@ -73,7 +87,7 @@ jobs:
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
-          name: NEXVARY-DC-UI-0.5.1
+          name: NEXVARY-DC-UI-0.6.0
           path: out/ui/
           if-no-files-found: error
       - name: Capture Windows boot repair UI
@@ -96,7 +110,7 @@ jobs:
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: NEXVARY-DC-Windows-Repair-UI-0.5.1
+          name: NEXVARY-DC-Windows-Repair-UI-0.6.0
           path: out/ui-windows/
           if-no-files-found: error
       - name: Deploy Windows
@@ -141,7 +155,7 @@ jobs:
         shell: pwsh
         run: |
           $destination = Join-Path $env:RUNNER_TEMP 'NEXVARY-DC-installed-test'
-          $setup = (Resolve-Path out/NEXVARY-DC-0.5.1-Setup.exe).Path
+          $setup = (Resolve-Path out/NEXVARY-DC-0.6.0-Setup.exe).Path
           $install = Start-Process $setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/NOICONS',"/DIR=$destination") -PassThru
           if (!$install.WaitForExit(60000)) { $install.Kill(); throw "Installer timeout" }
           if ($install.ExitCode -ne 0) { throw "Installation failed: $($install.ExitCode)" }
@@ -159,9 +173,9 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Compress-Archive -Path out/portable/* -DestinationPath out/NEXVARY-DC-0.5.1-Portable.zip
-          $files=@('out/NEXVARY-DC-0.5.1-Setup.exe','out/NEXVARY-DC-0.5.1-Portable.zip')
-          $manifest=@{version='0.5.1';commit=$env:GITHUB_SHA;run=$env:GITHUB_RUN_ID;files=@()}
+          Compress-Archive -Path out/portable/* -DestinationPath out/NEXVARY-DC-0.6.0-Portable.zip
+          $files=@('out/NEXVARY-DC-0.6.0-Setup.exe','out/NEXVARY-DC-0.6.0-Portable.zip')
+          $manifest=@{version='0.6.0';commit=$env:GITHUB_SHA;run=$env:GITHUB_RUN_ID;files=@()}
           foreach($path in $files){$item=Get-Item $path;$hash=(Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant();$manifest.files+=@{name=$item.Name;bytes=$item.Length;sha256=$hash}}
           $manifest | ConvertTo-Json -Depth 5 | Set-Content out/release-manifest.json -Encoding utf8
           $manifest.files | ForEach-Object {"$($_.sha256)  $($_.name)"} | Set-Content out/SHA256SUMS.txt -Encoding ascii
@@ -170,10 +184,10 @@ jobs:
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: NEXVARY-DC-Release-0.5.1
+          name: NEXVARY-DC-Release-0.6.0
           path: |
-            out/NEXVARY-DC-0.5.1-Setup.exe
-            out/NEXVARY-DC-0.5.1-Portable.zip
+            out/NEXVARY-DC-0.6.0-Setup.exe
+            out/NEXVARY-DC-0.6.0-Portable.zip
             out/release-manifest.json
             out/SHA256SUMS.txt
           if-no-files-found: error
@@ -181,14 +195,14 @@ jobs:
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: NEXVARY-DC-Installer-0.5.1
-          path: out/NEXVARY-DC-0.5.1-Setup.exe
+          name: NEXVARY-DC-Installer-0.6.0
+          path: out/NEXVARY-DC-0.6.0-Setup.exe
           if-no-files-found: error
       - name: Upload Windows artifacts
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: NEXVARY-DC-Portable-0.5.1
+          name: NEXVARY-DC-Portable-0.6.0
           path: out/portable/
           if-no-files-found: error
 
@@ -202,7 +216,7 @@ jobs:
           sudo apt-get update
           dc_kernel_package=$(apt-cache depends linux-image-generic | awk '/Depends: linux-image-[0-9]/{print $2; exit}')
           test -n "$dc_kernel_package"
-          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-system-x86 ovmf tesseract-ocr grub-pc-bin grub-efi-amd64-bin grub2-common efibootmgr busybox-static "$dc_kernel_package" cpio dosfstools parted zstd
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-system-x86 ovmf tesseract-ocr grub-pc-bin grub-efi-amd64-bin grub2-common efibootmgr busybox-static "$dc_kernel_package" "${dc_kernel_package/linux-image-/linux-modules-extra-}" cpio dosfstools parted zstd
       - name: Boot reference hybrid Linux in BIOS and UEFI
         run: python3 tests/vm/boot_linux.py
       - name: Repair GRUB and boot the repaired disk in BIOS and UEFI
@@ -211,7 +225,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: NEXVARY-DC-VM-0.5.1
+          name: NEXVARY-DC-VM-0.6.0
           path: |
             out/vm/*.png
             out/vm/*.ppm
@@ -231,7 +245,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: NEXVARY-DC-Release-0.5.1
+          name: NEXVARY-DC-Release-0.6.0
           path: release
       - name: Publish verified binaries
         env:
@@ -246,4 +260,4 @@ jobs:
               assert p.stat().st_size==row['bytes']
               assert hashlib.sha256(p.read_bytes()).hexdigest()==row['sha256']
           PYVERIFY
-          gh release create v0.5.1 release/* --target "$GITHUB_SHA" --title 'NEXVARY Disk Care 0.5.1' --notes-file docs/RELEASE-0.5.1.md
+          gh release create v0.6.0 release/* --target "$GITHUB_SHA" --title 'NEXVARY Disk Care 0.6.0' --notes-file docs/RELEASE-0.6.0.md

@@ -40,6 +40,7 @@ public:
  Q_INVOKABLE void inspectHealth(const QString &device);
  Q_INVOKABLE void scanSurface(const QString &device,bool acknowledged);
  Q_INVOKABLE void rescueDisk(const QString &device,const QString &destination,bool acknowledged,bool resume=false,int sectorBytes=512,int retries=1);
+ Q_INVOKABLE void retryRescueDisk(const QString &device,const QString &previous,const QString &destination,bool acknowledged,bool resume=false,int sectorBytes=512,int retries=1);
  Q_INVOKABLE void recoverImage(const QString &source,const QString &directory,int mode=0,int maxFiles=100000);
  Q_INVOKABLE void prepareBootRepair(const QString &root,const QString &esp,const QString &disk,const QString &mode,const QString &backup);
  Q_INVOKABLE void executeBootRepair(const QString &confirmation);

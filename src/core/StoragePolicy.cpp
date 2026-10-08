@@ -26,6 +26,18 @@ QString validateStorageRequest(const QJsonObject &d,const QJsonObject &r) {
  if(action=="layout" && r.value("style")=="MBR" && d.value("bytes").toDouble()>2.0*1099511627776)return "MBR above 2 TiB is unsupported.";
  return {};
 }
+
+QJsonObject driveCapabilities(const QJsonObject &raw){
+ auto device=raw.value("device").toObject();auto model=raw.value("model_name").toString(raw.value("scsi_model_name").toString());auto protocol=device.value("protocol").toString();auto type=device.value("type").toString();
+ bool ata=protocol.compare("ATA",Qt::CaseInsensitive)==0,usb=type.startsWith("sat",Qt::CaseInsensitive)||type.contains("usb",Qt::CaseInsensitive);
+ QJsonArray reasons;if(usb)reasons.append("bridge_passthrough_does_not_prove_vendor_command_support");
+ if(raw.value("serial_number").toString().isEmpty())reasons.append("source_serial_unavailable");
+ if(!raw.contains("logical_block_size"))reasons.append("logical_sector_size_unavailable");
+ bool warning=false;for(auto v:raw.value("ata_smart_attributes").toObject().value("table").toArray()){auto a=v.toObject();if(QList<int>{5,187,197,198}.contains(a.value("id").toInt())&&a.value("raw").toObject().value("value").toDouble()>0)warning=true;}
+ auto nvme=raw.value("nvme_smart_health_information_log").toObject();warning|=nvme.value("critical_warning").toDouble()>0||nvme.value("media_errors").toDouble()>0;
+ bool healthKnown=raw.value("smart_status").toObject().contains("passed");warning|=healthKnown&&!raw.value("smart_status").toObject().value("passed").toBool();
+ return {{"protocol",protocol},{"deviceType",type},{"model",model},{"firmware",raw.value("firmware_version")},{"logicalSectorBytes",raw.value("logical_block_size")},{"physicalSectorBytes",raw.value("physical_block_size")},{"ataReported",ata},{"bridgeIndicated",usb},{"westernDigitalModelIndicated",model.startsWith("WDC ",Qt::CaseInsensitive)||model.startsWith("WD",Qt::CaseInsensitive)},{"warningIndicatorsPresent",warning},{"healthKnown",healthKnown},{"recommendedNextStep",warning?"image_before_further_testing":healthKnown?"backup_then_assess":"health_unknown_check_connection"},{"firmwareRepairSupported",false},{"serviceAreaAccessSupported",false},{"translatorRepairSupported",false},{"hardwareResetSupported",false},{"powerCycleSupported",false},{"certifiedFirmwareProfiles",0},{"limitations",reasons}};
+}
 QJsonObject summarizeSmart(const QJsonObject &raw) {
  QJsonObject s;
  const auto smart=raw.value("smart_status").toObject();

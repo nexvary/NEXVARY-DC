@@ -93,6 +93,27 @@ private slots:
  }
  void recoveryCancellationAndLimit(){QTemporaryDir d;write(d.filePath("n.img"),ntImage());auto r=dc::recoverFilesystem(d.filePath("n.img"),d.path(),"NTFS",{}, {1,2000000});QCOMPARE(r.value("recoveredCount").toInt(),1);QCOMPARE(r.value("status").toString(),"partial");std::atomic_bool stop=true;r=dc::recoverFilesystem(d.filePath("n.img"),d.path(),"NTFS",{&stop,{}});QCOMPARE(r.value("status").toString(),"cancelled");}
  void ebrCycleAndBounds(){QTemporaryDir d;QByteArray b(512*100,0);b[510]=85;b[511]=char(170);b[450]=15;p32(b,454,10);p32(b,458,90);b[10*512+510]=85;b[10*512+511]=char(170);b[10*512+450]=7;p32(b,10*512+454,1);p32(b,10*512+458,20);b[10*512+466]=15;p32(b,10*512+470,0);write(d.filePath("p.img"),b);QFile f(d.filePath("p.img"));QVERIFY(f.open(QIODevice::ReadOnly));QStringList warnings;auto v=dc::imageVolumes(f,warnings);QCOMPARE(v.size(),2);QCOMPARE(v[1].offset,qint64(11*512));QVERIFY(!warnings.isEmpty());}
+
+ void selectiveRetryPreservesEvidenceAndSkipsHealthyMedia(){
+  QTemporaryDir d;QByteArray original(2*1048576,'R');auto old=d.filePath("old.img"),dest=d.filePath("new.img");int reads=0;
+  dc::RescueSource damaged{original.size(),"selective-fixture",[&](qint64 p,qint64 n){if(p<1024&&p+n>512)return QByteArray{};return original.mid(p,n);}};
+  auto r=dc::rescueStream(damaged,old,{});QCOMPARE(r.value("unreadableBytes").toInt(),512);auto evidence=read(old),oldmap=read(old+".readmap.jsonl");
+  dc::RescueSource repaired{original.size(),"selective-fixture",[&](qint64 p,qint64 n){++reads;if(p!=512||n!=512)return QByteArray{};return original.mid(p,n);}};
+  r=dc::retryRescueStream(repaired,old,dest,{});QCOMPARE(r.value("status").toString(),"completed");QCOMPARE(reads,1);QCOMPARE(r.value("physicalReadAttemptBytes").toInt(),512);QCOMPARE(r.value("newlyRecoveredBytes").toInt(),512);QCOMPARE(read(dest),original);QCOMPARE(read(old),evidence);QCOMPARE(read(old+".readmap.jsonl"),oldmap);QVERIFY(r.value("imageReadbackVerified").toBool());
+  QCOMPARE(r.value("sha256Written").toString(),QString::fromLatin1(QCryptographicHash::hash(original,QCryptographicHash::Sha256).toHex()));
+ }
+ void selectiveRetryRejectsChangesBeforeReadingSource(){
+  QTemporaryDir d;auto old=d.filePath("old.img");dc::RescueSource s{1048576,"original-id",[](qint64,qint64){return QByteArray{};}};
+  dc::rescueStream(s,old,{false,512,0});int reads=0;s.read=[&](qint64,qint64){++reads;return QByteArray{};};s.identity="changed";
+  auto dest=d.filePath("new.img");QCOMPARE(dc::retryRescueStream(s,old,dest,{}).value("status").toString(),"error");QVERIFY(!QFile::exists(dest));QCOMPARE(reads,0);s.identity="original-id";
+  std::atomic_bool cancel=true;QCOMPARE(dc::retryRescueStream(s,old,dest,{}, {&cancel,{}}).value("status").toString(),"cancelled");QCOMPARE(reads,0);
+  QFile f(old);QVERIFY(f.open(QIODevice::ReadWrite));f.write("X");f.close();QCOMPARE(dc::retryRescueStream(s,old,dest,{}).value("status").toString(),"error");QCOMPARE(reads,0);QVERIFY(!QFile::exists(dest));
+ }
+ void selectiveRetryCancellationResumeAndUnrecoveredSectors(){
+  QTemporaryDir d;QByteArray original(2*1048576,'S');auto old=d.filePath("old.img"),dest=d.filePath("new.img");dc::RescueSource s{original.size(),"retry-id",[&](qint64 p,qint64 n){if(n>512||p==512)return QByteArray{};return original.mid(p,n);}};
+  dc::rescueStream(s,old,{});std::atomic_bool cancel=false;auto r=dc::retryRescueStream(s,old,dest,{}, {&cancel,[&](qint64 n,qint64){if(n>=3*1048576)cancel=true;}});QCOMPARE(r.value("status").toString(),"cancelled");QVERIFY(QFile::exists(dest));cancel=false;
+  r=dc::retryRescueStream(s,old,dest,{true,512,0});QCOMPARE(r.value("status").toString(),"mismatch");QCOMPARE(r.value("newlyRecoveredBytes").toInt(),0);QCOMPARE(r.value("unreadableBytes").toInt(),512);original.replace(512,512,QByteArray(512,0));QCOMPARE(read(dest),original);
+ }
  void rescueCancelResumeAndTail(){QTemporaryDir d;QByteArray original(3*1048576,'R');dc::RescueSource s{original.size(),"fixture-1",[&](qint64 p,qint64 n){return original.mid(p,n);}};std::atomic_bool cancel=false;auto dest=d.filePath("rescue.img");auto r=dc::rescueStream(s,dest,{}, {&cancel,[&](qint64,qint64){cancel=true;}});QCOMPARE(r.value("status").toString(),"cancelled");QCOMPARE(r.value("processedBytes").toDouble(),1048576.0);
   QFile tail(dest);QVERIFY(tail.open(QIODevice::Append));tail.write("uncommitted");tail.close();QFile map(dest+".readmap.jsonl");QVERIFY(map.open(QIODevice::Append));map.write("{partial");map.close();cancel=false;r=dc::rescueStream(s,dest,{true,512,1});QCOMPARE(r.value("status").toString(),"completed");QVERIFY(r.value("imageReadbackVerified").toBool());QCOMPARE(read(dest),original);
  }

@@ -5,7 +5,7 @@ import QtQuick.Dialogs
 ApplicationWindow {
  id: root
  width:1280;height:850;minimumWidth:980;minimumHeight:700;visible:true
- title:"NEXVARY Disk Care · 0.5.1";color:"#080f17"
+ title:"NEXVARY Disk Care · 0.6.0";color:"#080f17"
  property bool arabic:true
  property int page:0
  property bool bootRepairMode:false
@@ -24,7 +24,7 @@ ApplicationWindow {
  property var iconNames:["overview","disk","rescue","maintenance","usb","capacity","reports","partition","boot","developer"]
  function t(ar,en){return arabic?ar:en}
  function size(bytes){return (Number(bytes||0)/1073741824).toFixed(2)+" GiB"}
- function operationName(value){const m={boot_repair:t("إصلاح GRUB","GRUB repair"),boot_repair_plan:t("خطة إصلاح الإقلاع","Boot repair plan"),disk_discovery:t("اكتشاف الأقراص","Disk discovery"),smart_read:t("قراءة صحة القرص","Disk health read"),image_read:t("فحص الصورة","Image inspection"),image_copy:t("نسخ الصورة والتحقق","Image copy & verification"),surface_read:t("فحص قراءة السطح","Surface read scan"),media_rescue:t("إنشاء صورة إنقاذ","Media rescue image"),directory_capacity_test:t("اختبار كتابة وقراءة المساحة","Storage write/read test"),format:t("فورمات القسم","Partition format"),delete:t("حذف القسم","Partition deletion"),create:t("إنشاء قسم","Partition creation"),layout:t("إنشاء تقسيم جديد","New partition layout"),repair:t("إصلاح نظام الملفات","Filesystem repair"),check:t("فحص نظام الملفات","Filesystem scan"),filesystem_recovery:root.t("استعادة بيانات نظام الملفات","Filesystem metadata recovery"),fat32_recovery:t("استعادة ملفات FAT32 المحذوفة","FAT32 deleted-file recovery"),file_recovery:t("استعادة الصور من صورة الإنقاذ","Recover photos from rescue image"),linux_usb:t("تجهيز إقلاع Linux","Linux boot media"),windows_bios_usb:t("تجهيز Windows BIOS/UEFI","Windows BIOS/UEFI media"),windows_usb:t("تجهيز مثبت Windows","Windows installation media")};return m[value]||value||"—"}
+ function operationName(value){const m={boot_repair:t("إصلاح GRUB","GRUB repair"),boot_repair_plan:t("خطة إصلاح الإقلاع","Boot repair plan"),disk_discovery:t("اكتشاف الأقراص","Disk discovery"),smart_read:t("قراءة صحة القرص","Disk health read"),image_read:t("فحص الصورة","Image inspection"),image_copy:t("نسخ الصورة والتحقق","Image copy & verification"),surface_read:t("فحص قراءة السطح","Surface read scan"),media_retry:t("إعادة إنقاذ المناطق المتعثرة","Selective rescue retry"),media_rescue:t("إنشاء صورة إنقاذ","Media rescue image"),directory_capacity_test:t("اختبار كتابة وقراءة المساحة","Storage write/read test"),format:t("فورمات القسم","Partition format"),delete:t("حذف القسم","Partition deletion"),create:t("إنشاء قسم","Partition creation"),layout:t("إنشاء تقسيم جديد","New partition layout"),repair:t("إصلاح نظام الملفات","Filesystem repair"),check:t("فحص نظام الملفات","Filesystem scan"),filesystem_recovery:root.t("استعادة بيانات نظام الملفات","Filesystem metadata recovery"),fat32_recovery:t("استعادة ملفات FAT32 المحذوفة","FAT32 deleted-file recovery"),file_recovery:t("استعادة الصور من صورة الإنقاذ","Recover photos from rescue image"),linux_usb:t("تجهيز إقلاع Linux","Linux boot media"),windows_bios_usb:t("تجهيز Windows BIOS/UEFI","Windows BIOS/UEFI media"),windows_usb:t("تجهيز مثبت Windows","Windows installation media")};return m[value]||value||"—"}
  function message(s){
   if(!arabic)return s
   if(s.indexOf("Administrator")>=0)return "تحتاج العملية صلاحيات المسؤول. استخدم «تشغيل كمسؤول» ثم اختر القرص وأكد العملية من جديد."
@@ -42,6 +42,7 @@ ApplicationWindow {
  palette.placeholderText:"#89a9c0";palette.text:"#dce9f4";palette.windowText:"#dce9f4";palette.base:"#0c1b28";palette.button:"#19344a";palette.buttonText:"#dce9f4";palette.highlight:"#3985bd";palette.highlightedText:"#ffffff"
  Connections {target:backend;function onDisksChanged(){if(root.diskIndex>=backend.disks.length)root.diskIndex=-1}}
  FileDialog {id:sourceDialog;onAccepted:imagePath.text=backend.localPath(selectedFile.toString())}
+ FileDialog {id:priorRescueDialog;onAccepted:priorRescuePath.text=backend.localPath(selectedFile.toString())}
  FileDialog {id:rescueDialog;fileMode:FileDialog.SaveFile;onAccepted:rescuePath.text=backend.localPath(selectedFile.toString())}
  FileDialog {id:targetDialog;fileMode:FileDialog.SaveFile;onAccepted:targetPath.text=backend.localPath(selectedFile.toString())}
  FileDialog {id:isoDialog;nameFilters:["ISO (*.iso)"];onAccepted:if(root.isoCallback)root.isoCallback(backend.localPath(selectedFile.toString()))}
@@ -69,7 +70,7 @@ ApplicationWindow {
  }
  Dialog {id:readConfirm;modal:true;anchors.centerIn:parent;width:Math.min(root.width-80,580);title:root.t("مراجعة قراءة القرص","Review disk read");standardButtons:Dialog.Yes|Dialog.No
   contentItem:Label {text:(root.selectedDisk.model||"")+"\n"+(root.selectedDisk.device||"")+" · "+root.size(root.selectedDisk.bytes)+"\n"+root.t("قراءة كاملة للوسيط دون الكتابة عليه. قد تجهد وسيطًا متعثرًا. الإنقاذ يكتب الصورة في قرص آخر ويملأ المقاطع غير المقروءة بأصفار مع تسجيلها. هل توافق؟","Reads the whole device without writing to it. This can stress failing media. Rescue writes to another disk and records unreadable zero-filled chunks. Proceed?");color:"#edc18a";wrapMode:Text.WrapAnywhere}
-  onAccepted:if(root.rescueMode)backend.rescueDisk(root.selectedDisk.device,rescuePath.text,true,resumeRescue.checked,sectorChoice.currentIndex===0?512:4096,retryCount.value);else backend.scanSurface(root.selectedDisk.device,true)
+  onAccepted:if(root.rescueMode&&selectiveRetry.checked)backend.retryRescueDisk(root.selectedDisk.device,priorRescuePath.text,rescuePath.text,true,resumeRescue.checked,sectorChoice.currentIndex===0?512:4096,retryCount.value);else if(root.rescueMode)backend.rescueDisk(root.selectedDisk.device,rescuePath.text,true,resumeRescue.checked,sectorChoice.currentIndex===0?512:4096,retryCount.value);else backend.scanSurface(root.selectedDisk.device,true)
  }
  RowLayout {anchors.fill:parent;spacing:0
   Rectangle {Layout.preferredWidth:210;Layout.fillHeight:true;color:"#0d1c29";border.color:"#263e50"
@@ -84,7 +85,7 @@ ApplicationWindow {
     Item {Layout.fillHeight:true}
     ActionButton {visible:backend.windows&&!backend.administrator;Layout.fillWidth:true;implicitHeight:34;text:root.t("تشغيل كمسؤول","Run as administrator");enabled:!backend.busy;onClicked:if(!backend.relaunchAdministrator())root.notice=root.t("لم تُمنح صلاحيات المسؤول؛ لم يبدأ أي إجراء","Administrator permission was not granted; no operation started")}
     Label {visible:!backend.windows||backend.administrator;text:backend.administrator?root.t("صلاحيات مسؤول","Administrator"):root.t("وضع المستخدم","User mode");color:backend.administrator?"#efbf78":"#74c7a7";font.pixelSize:11}
-    RowLayout {Label {text:"0.5.1";color:"#7999b0"}Item {Layout.fillWidth:true}ActionButton {text:root.arabic?"English":"العربية";implicitWidth:102;implicitHeight:34;onClicked:root.arabic=!root.arabic}}
+    RowLayout {Label {text:"0.6.0";color:"#7999b0"}Item {Layout.fillWidth:true}ActionButton {text:root.arabic?"English":"العربية";implicitWidth:102;implicitHeight:34;onClicked:root.arabic=!root.arabic}}
    }
   }
   ColumnLayout {Layout.fillWidth:true;Layout.fillHeight:true;Layout.margins:20;spacing:12
@@ -141,8 +142,11 @@ ApplicationWindow {
        Label {text:root.page===1?root.t("فحص السطح بالقراءة فقط","Read-only surface scan"):root.t("إنشاء صورة إنقاذ للقرص","Create rescue disk image");font.pixelSize:19;font.bold:true;color:"#dbeefc"}
        Label {text:root.t("يتطلب اختيار قرص فعلي. الفحص لا يصلح القطاعات؛ فحص السطح يسجل كتل 1 MiB؛ الإنقاذ يعيد المحاولة بدقة القطاع المختار. احفظ الصورة وخريطة JSONL معًا. الاستئناف يتحقق من هوية المصدر والوجهة وSHA-256 قبل المتابعة.","Select a physical disk. Scanning does not repair sectors; surface scan reports 1 MiB blocks; rescue retries at the selected sector size. Keep the image and JSONL map together. Explicit resume verifies source/destination identity and SHA-256 before continuing.");Layout.fillWidth:true;wrapMode:Text.WordWrap;color:"#a6bfd1"}
        Flow {visible:root.page===2;Layout.fillWidth:true;spacing:10;CheckBox {id:resumeRescue;text:root.t("استئناف صورة موجودة","Resume existing image");enabled:!backend.busy}ComboBox {id:sectorChoice;model:["512 bytes","4096 bytes"];enabled:!backend.busy}Label {text:root.t("إعادة المحاولة لكل قطاع:","Retries per sector:");color:"#c1d5e6"}SpinBox {id:retryCount;from:0;to:5;value:1;enabled:!backend.busy}}
+       CheckBox {id:selectiveRetry;visible:root.page===2;text:root.t("إعادة قراءة المناطق غير المقروءة فقط من صورة سابقة","Retry only unreadable regions from a previous image");enabled:!backend.busy}
+       Label {visible:root.page===2&&selectiveRetry.checked;text:root.t("يتحقق من صورة مكتملة وخريطتها أولًا، وينسخ البيانات المقروءة إلى صورة أخرى دون إعادة قراءتها من الهارد. يحتاج مساحة لصورة ثانية؛ يحافظ على الأصل. لا يضبط مهلة عتاد ولا يفصل الطاقة.","Validates a full image/map first, copies healthy image data to a separate image and reads only recorded failed sectors from the drive. Requires room for another full image; preserves the original. No hardware timeout or power control.");Layout.fillWidth:true;wrapMode:Text.WordWrap;color:"#a6bfd1"}
+       RowLayout {visible:root.page===2&&selectiveRetry.checked;Layout.fillWidth:true;TextField {id:priorRescuePath;Layout.fillWidth:true;placeholderText:root.t("صورة الإنقاذ السابقة مع خريطة JSONL الأصلية","Previous rescue image with its original JSONL map");enabled:!backend.busy}ActionButton {text:root.t("الصورة السابقة","Previous image");onClicked:priorRescueDialog.open()}}
        RowLayout {visible:root.page===2;Layout.fillWidth:true;TextField {id:rescuePath;Layout.fillWidth:true;placeholderText:root.t("صورة جديدة على قرص آخر","New image on a different disk");selectByMouse:true;enabled:!backend.busy}ActionButton {text:root.t("الوجهة","Destination");onClicked:rescueDialog.open()}}
-       ActionButton {text:root.page===1?root.t("مراجعة فحص السطح","Review surface scan"):root.t("مراجعة إنشاء صورة الإنقاذ","Review rescue imaging");primary:true;enabled:!backend.busy&&!!root.selectedDisk.device&&(root.page===1||rescuePath.text.length>0);onClicked:{root.rescueMode=root.page===2;readConfirm.open()}}
+       ActionButton {text:root.page===1?root.t("مراجعة فحص السطح","Review surface scan"):root.t("مراجعة إنشاء صورة الإنقاذ","Review rescue imaging");primary:true;enabled:!backend.busy&&!!root.selectedDisk.device&&(root.page===1||(rescuePath.text.length>0&&(!selectiveRetry.checked||priorRescuePath.text.length>0)));onClicked:{root.rescueMode=root.page===2;readConfirm.open()}}
        Label {visible:!backend.windows&&root.page===2;text:root.t("إنشاء صور الأقراص الفعلية متاح على Windows حاليًا؛ على Linux يمكنك فحص السطح وملفات الصور.","Physical-disk imaging currently supports Windows; Linux supports surface and image-file scanning.");Layout.fillWidth:true;wrapMode:Text.WordWrap;color:"#efbd77"}
       }
      }

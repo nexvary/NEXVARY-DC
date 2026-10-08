@@ -1,4 +1,4 @@
-NEXVARY DISK CARE 0.5.1
+NEXVARY DISK CARE 0.6.0
 Storage diagnostics, metadata recovery and verified imaging
 
 INCLUDED FEATURES
@@ -39,3 +39,7 @@ Copied boot files and ISO markers do not prove bootability or Secure Boot suppor
 Offline GRUB repair from live Linux (bundled helper, not executed on Windows): ext4, BIOS/MBR and UEFI without Secure Boot, verified backups and identity checks.
 4Kn GPT images, retained deleted FAT32 folders and supported NTFS file ATTRIBUTE_LIST extents.
 Windows can restore priority of an existing GRUB/shim UEFI entry, with BCD/firmware backup. Missing EFI files are not recreated.
+
+Selective retry reads only previously unreadable disk sectors after full prior-image/map validation; original evidence is preserved and a separate full-size image is required.
+SMART capability reports describe observed protocol/model/sector data and explicitly report no certified firmware repair profiles.
+OpenSuperClone is evaluated separately on Linux; it is not bundled or linked into this Windows package.

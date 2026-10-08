@@ -1,4 +1,4 @@
-# NEXVARY Disk Care 0.5.1
+# NEXVARY Disk Care 0.6.0
 
 C++20 / Qt 6 desktop storage toolkit with Arabic RTL and English. Original colored icon set, developer page and bilingual installer. This remains an experimental build; physical hardware compatibility is not established by CI.
 
@@ -53,9 +53,19 @@ See [scope and nine observations](docs/OBSERVATIONS.md), [research](docs/RESEARC
 ## Boot preparation
 Windows x64 UEFI/GPT and BIOS+UEFI/MBR paths retain target protection. Large install.wim files are split with DISM into a temporary folder **before erasure**, then each SWM part is copied and SHA-256 compared. This needs temporary free space. Hybrid Linux writing locks target volumes and verifies output by SHA-256. ISO markers and copied files do not establish bootability or Secure Boot support. Boot-mode compatibility depends on the ISO and firmware.
 
-See [0.5.1 verification and limits](docs/VERIFICATION.md), [release notes](docs/RELEASE-0.5.1.md) and [hardware-only checklist in Arabic](docs/HARDWARE-TESTS-AR.md). Release assets include a manifest with the exact tested commit, CI run, byte sizes and SHA-256. The release job only runs after both OS verification jobs succeed.
+See [0.6.0 verification and limits](docs/VERIFICATION.md), [release notes](docs/RELEASE-0.6.0.md) and [hardware-only checklist in Arabic](docs/HARDWARE-TESTS-AR.md). Release assets include a manifest with the exact tested commit, CI run, byte sizes and SHA-256. The release job only runs after both OS verification jobs succeed.
 
-## Boot repair (0.5.1)
+## Boot repair (0.6.0)
 Offline x64 live-Linux GRUB repair is separate from creating installation media. Supports mounted plain ext4 root, BIOS/MBR and UEFI without Secure Boot, verified backups, identity revalidation and a Windows UEFI chainloader entry when its loader survives. [Arabic procedure and limits](docs/BOOT-REPAIR-AR.md). Windows packages include the helper for use from live Linux.
 
 Recovery additionally supports 4Kn GPT images, retained deleted FAT32 folder chains and bounded NTFS file ATTRIBUTE_LIST extensions (external MFT extensions remain unsupported).
+
+## Advanced rescue (0.6.0)
+Selective retry validates a full previous image and original JSONL map, copies healthy
+image sectors to another image and reads only recorded failed sectors from the disk.
+The original evidence is preserved. New output/resume identity checks and readback
+verification remain mandatory. Another full image worth of destination space is required.
+Use the new checkbox and previous-image selector on Data rescue. Physical-device rescue
+is currently Windows-only. Raw reads have no hardware-level timeout/power-cycle control.
+SMART reports now include evidence-based connection/sector/model capabilities and explicit
+zero certified firmware profiles. See [advanced engine assessment](docs/ADVANCED-RESCUE-AR.md).

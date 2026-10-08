@@ -42,7 +42,7 @@ QJsonObject process(const QString &exe,const QStringList &args,bool smart=false,
  QJsonObject result=doc.isObject()?doc.object():QJsonObject{{"devices",doc.array()}};
  result.insert("status",smart && (p.exitCode()&7)?"error":"completed");result.insert("engineExitCode",p.exitCode());
  result.insert("operation",smart?"smart_read":"disk_discovery");
- if(smart){result.insert("summary",dc::summarizeSmart(result));QStringList messages;for(auto m:result.value("smartctl").toObject().value("messages").toArray())messages.append(m.toObject().value("string").toString());if(!messages.isEmpty())result.insert("message",messages.join("; "));}
+ if(smart){result.insert("capabilities",dc::driveCapabilities(result));result.insert("summary",dc::summarizeSmart(result));QStringList messages;for(auto m:result.value("smartctl").toObject().value("messages").toArray())messages.append(m.toObject().value("string").toString());if(!messages.isEmpty())result.insert("message",messages.join("; "));}
  return result;
 }
 QJsonObject storageProcess(const QJsonObject &request,std::atomic_bool *cancel=nullptr) {
@@ -194,7 +194,7 @@ void Controller::cancel(){if(interruptible())m_cancel=true;}
 QString Controller::fileUrl(const QString &path) const {return QUrl::fromLocalFile(path).toString();}
 QString Controller::localPath(const QString &url) const {QUrl u(url);return u.isLocalFile()?u.toLocalFile():url;}
 void Controller::setResult(const QJsonObject &input) {
- auto result=input;result.insert("appVersion","0.4.0");result.insert("recordedAt",QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+ auto result=input;result.insert("appVersion",QCoreApplication::applicationVersion());result.insert("recordedAt",QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
  m_report=QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Indented));
  if(m_db.isOpen()) {QSqlQuery q(m_db);q.prepare("INSERT INTO operations(created,operation,report) VALUES(?,?,?)");q.addBindValue(result.value("recordedAt").toString());q.addBindValue(result.value("operation").toString(m_operation));q.addBindValue(m_report);if(!q.exec()){result.insert("historySaved",false);m_report=QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Indented));}}
  m_result=result.toVariantMap();
@@ -262,6 +262,13 @@ void Controller::rescueDisk(const QString &device,const QString &destination,boo
  qint64 bytes=0;for(const auto &d:m_disks)if(d.toMap().value("device").toString()==device)bytes=d.toMap().value("bytes").toLongLong();
  if(!acknowledged || !bytes){setResult(fail("Select an enumerated disk and acknowledge rescue limitations."));return;}
  start("media_rescue",[this,device,bytes,destination,resume,sectorBytes,retries]{return dc::rescueMedia(device,bytes,destination,{&m_cancel,[this](qint64 n,qint64 total){QMetaObject::invokeMethod(this,[this,n,total]{m_progress=total?double(n)/double(total):0;emit stateChanged();},Qt::QueuedConnection);}},{resume,sectorBytes,retries});});
+}
+
+void Controller::retryRescueDisk(const QString &device,const QString &previous,const QString &destination,bool acknowledged,bool resume,int sectorBytes,int retries) {
+ if(m_busy)return;
+ qint64 bytes=0;for(const auto &d:m_disks)if(d.toMap().value("device").toString()==device)bytes=d.toMap().value("bytes").toLongLong();
+ if(!acknowledged||!bytes){setResult(fail("Select an enumerated source and acknowledge rescue limitations."));return;}
+ start("media_retry",[this,device,bytes,previous,destination,resume,sectorBytes,retries]{return dc::retryRescueMedia(device,bytes,previous,destination,{&m_cancel,[this](qint64 n,qint64 total){QMetaObject::invokeMethod(this,[this,n,total]{m_progress=total?double(n)/double(total):0;emit stateChanged();},Qt::QueuedConnection);}},{resume,sectorBytes,retries});});
 }
 
 void Controller::recoverImage(const QString &source,const QString &directory,int mode,int maxFiles) {

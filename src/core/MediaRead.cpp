@@ -136,4 +136,14 @@ QJsonObject rescueMedia(const QString &device,qint64 bytes,const QString &dest,c
  RescueSource source{bytes,identity,[&](qint64 offset,qint64 count){QByteArray b(count,0);auto n=reader.read(offset,b.data(),count);if(n!=count)return QByteArray{};return b;}};
  return rescueStream(source,dest,options,context);
 }
+QJsonObject retryRescueMedia(const QString &device,qint64 bytes,const QString &previous,const QString &dest,const Context &context,const RescueOptions &options){
+ if(!isRegularSource(device)&&!outputIsSeparate(device,dest,options.resume))return fail("Destination disk separation could not be verified.");
+ if(QFileInfo(device).canonicalFilePath()==QFileInfo(dest).canonicalFilePath()&&QFileInfo(dest).exists())return fail("Source and destination must differ.");
+ Reader reader;if(!reader.open(device))return fail("Cannot open source read-only.");
+ if(!isRegularSource(device)&&reader.logicalSector()!=options.sectorBytes)return fail("Sector size does not match actual source.");
+ auto id=reader.identity(bytes);if(id.isEmpty())return fail("Cannot verify source identity and actual length.");
+ RescueSource source{bytes,id,[&](qint64 p,qint64 n){QByteArray b(n,0);if(reader.read(p,b.data(),n)!=n)return QByteArray{};return b;}};
+ return retryRescueStream(source,previous,dest,options,context);
+}
+
 }

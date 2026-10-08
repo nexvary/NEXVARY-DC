@@ -6,4 +6,5 @@ namespace dc {
 QJsonObject scanMedia(const QString &device,qint64 bytes,const Context &context={});
 // Best-effort image: unreadable chunks become zeros and are recorded explicitly.
 QJsonObject rescueMedia(const QString &device,qint64 bytes,const QString &destination,const Context &context={},const RescueOptions &options={});
+QJsonObject retryRescueMedia(const QString &device,qint64 bytes,const QString &previous,const QString &destination,const Context &context={},const RescueOptions &options={});
 }

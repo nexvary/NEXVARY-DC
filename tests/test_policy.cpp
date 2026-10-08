@@ -29,6 +29,9 @@ private slots:
   std::atomic_bool cancel=true;result=dc::rescueMedia(input.fileName(),1048576,dir.filePath("partial.img"),{&cancel,{}});QCOMPARE(result.value("status").toString(),"cancelled");QVERIFY(result.value("partialImageRetained").toBool());QVERIFY(QFile::exists(dir.filePath("partial.img.readmap.jsonl")));
   result=dc::scanMedia(input.fileName(),513);QCOMPARE(result.value("status").toString(),"error");
  }
+ void firmwareCapabilitiesAreEvidenceBased(){auto c=dc::driveCapabilities({});QVERIFY(!c.value("healthKnown").toBool());QVERIFY(!c.value("firmwareRepairSupported").toBool());QCOMPARE(c.value("certifiedFirmwareProfiles").toInt(),0);
+  c=dc::driveCapabilities({{"model_name","WDC WD10TEST"},{"device",QJsonObject{{"protocol","ATA"},{"type","sat"}}},{"smart_status",QJsonObject{{"passed",true}}},{"ata_smart_attributes",QJsonObject{{"table",QJsonArray{QJsonObject{{"id",197},{"raw",QJsonObject{{"value",2}}}}}}}}});QVERIFY(c.value("westernDigitalModelIndicated").toBool());QVERIFY(c.value("bridgeIndicated").toBool());QVERIFY(c.value("warningIndicatorsPresent").toBool());QCOMPARE(c.value("recommendedNextStep").toString(),"image_before_further_testing");QVERIFY(!c.value("translatorRepairSupported").toBool());
+ }
  void explicitHealth(){auto s=dc::summarizeSmart(QJsonObject{});QCOMPARE(s.value("health").toString(),"unknown");s=dc::summarizeSmart({{"smart_status",QJsonObject{{"passed",false}}},{"temperature",QJsonObject{{"current",42}}},{"nvme_smart_health_information_log",QJsonObject{{"media_errors",7}}}});QCOMPARE(s.value("health").toString(),"failed");QCOMPARE(s.value("temperature").toInt(),42);QCOMPARE(s.value("attributes").toArray().size(),1);}
 };
 QTEST_GUILESS_MAIN(PolicyTests)

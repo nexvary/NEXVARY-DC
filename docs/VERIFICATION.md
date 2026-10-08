@@ -1,4 +1,4 @@
-# Verification — 0.5.1
+# Verification — 0.6.0
 
 Release publication is gated on Windows 2022 and Ubuntu 24.04 builds/tests for the **same commit**. `release-manifest.json` records its SHA and Actions run. A local source tree or a successful compile alone is not release evidence.
 
@@ -43,3 +43,13 @@ GRUB repair supports plain ext4 root with /boot inside it and an intact grub.cfg
 Windows firmware-priority repair is limited to an existing GRUB/shim entry in the current firmware order. It preserves other entries and makes no partition writes. BCDEdit displayorder parsing must be recognized; otherwise it refuses safely. Parser/localization fixtures do not certify real device firmware writes.
 
 Windows visual proof uses the native Windows platform, not the font-less offscreen test platform. The screenshot command checks required Arabic/Latin glyph coverage before capturing. Offscreen startup tests are still lifecycle checks, not font-rendering evidence.
+
+## 0.6.0 gates
+- Selective failed-sector retry: original image/map preservation, healthy physical
+  sectors never reread, newly recovered content and SHA-256, cancellation/resume,
+  remaining failures and refusal of changed identity/corrupted evidence before disk reads.
+- SMART-derived capability fixtures: unknown data remains unknown; a WD model or
+  SAT bridge never enables firmware repair. No certified device firmware profiles.
+- Separately builds pinned OpenSuperClone v2.5.0 (87a25d257e44337ae15f863e59b0062311a5c329),
+  verifies help/version, retains license and exact upstream source archive. Does not
+  install/load its driver, access a disk, execute its scripts or certify direct AHCI/relay.
