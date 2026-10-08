@@ -261,6 +261,7 @@ jobs:
             out/osc-direct/adapter.patch
             out/osc-direct/upstream-source.tar.gz
             out/osc-direct/LICENSE
+            out/direct-vm/results.json
           if-no-files-found: error
       - name: Upload VM proof
         if: always()
@@ -331,6 +332,10 @@ jobs:
         with:
           name: NEXVARY-Direct-AHCI-0.7.0
           path: direct-engine
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: NEXVARY-Windows-VM-*-0.7.0
+          path: windows-proof
       - name: Package qualified Linux helper and corresponding sources
         run: tar -czf release/NEXVARY-DC-0.7.0-Linux-Direct-AHCI.tar.gz -C direct-engine .
       - name: Publish verified binaries
@@ -341,6 +346,16 @@ jobs:
           import json, os, pathlib, hashlib
           data=json.loads(pathlib.Path('release/release-manifest.json').read_text(encoding='utf-8-sig'))
           assert data['commit']==os.environ['GITHUB_SHA']
+          direct=json.loads(pathlib.Path('direct-engine/out/direct-vm/results.json').read_text())
+          assert direct['sourceUnchanged'] and not direct['sourceWritesObserved'] and direct['cancelResumeTested'] and direct['sourceIdentityRejected']
+          windows={}
+          for p in pathlib.Path('windows-proof').glob('*/result.json'):
+              row=json.loads(p.read_text(encoding='utf-8-sig'))
+              assert row['installedWindowsBoot'] and row['secureBoot']==(row['mode']=='secureboot')
+              windows[row['mode']]=row
+          assert set(windows)=={'bios','uefi','secureboot'}
+          data['verification']={'directAHCIVM':direct,'installedWindowsVM':windows,'dcWindowsUSBEndToEndTested':False,'firmwareRepairCertifiedFamilies':0}
+
           p=pathlib.Path('release/NEXVARY-DC-0.7.0-Linux-Direct-AHCI.tar.gz')
           data['files'].append({'name':p.name,'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()})
           pathlib.Path('release/release-manifest.json').write_text(json.dumps(data,indent=2))
