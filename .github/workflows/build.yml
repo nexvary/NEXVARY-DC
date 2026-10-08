@@ -229,6 +229,15 @@ jobs:
           dc_kernel_package=$(apt-cache depends linux-image-generic | awk '/Depends: linux-image-[0-9]/{print $2; exit}')
           test -n "$dc_kernel_package"
           sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-system-x86 ovmf tesseract-ocr grub-pc-bin grub-efi-amd64-bin grub2-common efibootmgr busybox-static "$dc_kernel_package" "${dc_kernel_package/linux-image-/linux-modules-extra-}" cpio dosfstools parted zstd
+      - name: Retain OVMF test firmware
+        run: |
+          mkdir -p out/firmware
+          cp /usr/share/OVMF/OVMF_CODE_4M.secboot.fd /usr/share/OVMF/OVMF_VARS_4M.ms.fd /usr/share/OVMF/OVMF_VARS_4M.fd out/firmware/
+          cp /usr/share/doc/ovmf/copyright out/firmware/LICENSE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OVMF-test-firmware
+          path: out/firmware/
       - name: Boot reference hybrid Linux in BIOS and UEFI
         run: python3 tests/vm/boot_linux.py
       - name: Repair GRUB and boot the repaired disk in BIOS and UEFI
@@ -269,9 +278,37 @@ jobs:
             out/direct-vm/results.json
           if-no-files-found: warn
 
+  windows-vm:
+    needs: linux-vm
+    runs-on: windows-2022
+    timeout-minutes: 80
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [bios, uefi, secureboot]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: OVMF-test-firmware
+          path: out/firmware
+      - name: Install QEMU
+        shell: pwsh
+        run: choco install qemu -y --no-progress
+      - name: Boot installed evaluation Windows and inspect guest Secure Boot
+        shell: pwsh
+        run: ./tests/vm/windows_boot.ps1 -Mode ${{ matrix.mode }}
+      - name: Retain Windows VM proof without Microsoft images
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: NEXVARY-Windows-VM-${{ matrix.mode }}-0.7.0
+          path: out/windows-vm-${{ matrix.mode }}/
+          if-no-files-found: warn
+
   release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [verify, linux-vm]
+    needs: [verify, linux-vm, windows-vm]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
