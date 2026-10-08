@@ -38,7 +38,7 @@ def binary(path):
             binary(word)
 
 
-for tool in ['python3', 'lsblk', 'findmnt', 'efibootmgr', 'grub-install', 'grub-script-check',
+for tool in ['python3', 'lsblk', 'blkid', 'findmnt', 'efibootmgr', 'grub-install', 'grub-script-check',
              'grub-mkimage', 'grub-probe', 'grub-bios-setup', 'grub-editenv', 'grub-mkrelpath', 'modprobe']:
     executable = shutil.which(tool)
     if not executable and tool == 'grub-bios-setup':

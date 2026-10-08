@@ -44,6 +44,16 @@ def inventory():
     nodes = list(flatten(json.loads(run(['lsblk', '--json', '--bytes', '--paths',
         '--output', 'PATH,TYPE,SIZE,RO,LOG-SEC,SERIAL,WWN,UUID,PARTUUID,PARTTYPE,PKNAME,FSTYPE,PTTYPE,MOUNTPOINTS']))['blockdevices']))
     for node in nodes:
+        if node['type'] in ('disk', 'loop', 'part'):
+            # Minimal live RAM environments may have no udev property cache.
+            try:
+                properties = dict(line.split('=', 1) for line in run(['blkid', '-p', '-o', 'export', node['path']]).splitlines() if '=' in line)
+            except RuntimeError:
+                properties = {}
+            for key, prop in [('uuid', 'UUID'), ('partuuid', 'PART_ENTRY_UUID'), ('parttype', 'PART_ENTRY_TYPE'), ('pttype', 'PTTYPE')]:
+                if not node.get(key):
+                    node[key] = properties.get(prop)
+            node['ptuuid'] = properties.get('PTUUID')
         if node['type'] == 'part':
             node['partn'] = int((pathlib.Path('/sys/class/block') / pathlib.Path(node['path']).name / 'partition').read_text())
     return nodes

@@ -28,13 +28,14 @@ INCLUDED FEATURES
 IMPORTANT LIMITS
 Complete recovery means byte coverage, not proof that deleted data survived overwrite.
 Overwritten/TRIM-discarded bytes cannot be reconstructed. NTFS compressed/encrypted
-streams and ATTRIBUTE_LIST extensions are reported as unsupported. Deleted FAT32
-folder chains cannot be reliably rebuilt; FAT32 results remain candidates.
+streams and external MFT ATTRIBUTE_LIST extensions are reported as unsupported. Deleted FAT32
+folders require retained chains and dot entries; cleared chains are refused and FAT32 results remain candidates.
 Resume requires an identifiable source and the original image/map pair. Physical
 rescue destination mapping is Windows-only. Surface scanning still reports 1 MiB blocks.
-GPT images currently assume 512-byte partition-table sectors. Resource limits and
+GPT images support 512/4096-byte partition-table sectors; MBR assumes 512. Resource limits and
 unsupported/corrupt entries appear in reports. No firmware flashing or physical repair.
 Copied boot files and ISO markers do not prove bootability or Secure Boot support.
 
 Offline GRUB repair from live Linux (bundled helper, not executed on Windows): ext4, BIOS/MBR and UEFI without Secure Boot, verified backups and identity checks.
 4Kn GPT images, retained deleted FAT32 folders and supported NTFS file ATTRIBUTE_LIST extents.
+Windows can restore priority of an existing GRUB/shim UEFI entry, with BCD/firmware backup. Missing EFI files are not recreated.
