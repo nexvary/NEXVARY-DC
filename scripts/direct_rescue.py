@@ -137,14 +137,25 @@ class AHCI:
             raise ValueError('Engine is not the exact qualified adapter binary')
         self.topology = guard_controller(identity['pci'], identity['port'])
 
+    def validate(self):
+        self._transfer(0,512,identify_only=True)
+
     def read(self, offset, count):
+        return self._transfer(offset,count)
+
+    def _transfer(self, offset, count, identify_only=False):
         if type(offset) is not int or type(count) is not int or offset % 512 or count % 512:
             raise ValueError('Unaligned source read')
         if guard_controller(self.identity['pci'], self.identity['port']) != self.topology:
             raise ValueError('Controller topology changed')
         with tempfile.TemporaryDirectory(prefix='dc_ahci_', dir='/tmp') as tmp:
             output, script = Path(tmp)/'data.bin', Path(tmp)/'read.osc'
-            script.write_text(read_script(self.identity, offset//512, count//512, str(output)))
+            content = read_script(self.identity, offset//512, count//512, str(output))
+            if identify_only:
+                prefix, separator, _ = content.partition('\nbuffersize 512\nclearbuffer')
+                if not separator: raise ValueError('Invalid generated identify script')
+                content = prefix+'\necho "DC_IDENTITY_OK"\nexit 0\n'
+            script.write_text(content)
             env = dict(os.environ, DC_AHCI_PCI=self.identity['pci'],
                        DC_AHCI_PORT=str(self.identity['port']), DC_AHCI_SERIAL=self.identity['serial'])
             # Engine handles ATA timeout and normal cleanup. Do not SIGKILL active
@@ -154,8 +165,10 @@ class AHCI:
                                     start_new_session=True)
             if result.returncode == 7 or 'DC_IDENTITY_CHANGED' in result.stderr:
                 raise ValueError('ATA source identity changed')
-            if result.returncode or 'DC_READ_OK' not in result.stdout or not output.exists():
+            marker = 'DC_IDENTITY_OK' if identify_only else 'DC_READ_OK'
+            if result.returncode or marker not in result.stdout or (not identify_only and not output.exists()):
                 raise OSError('AHCI read failed: ' + result.stderr[-1000:])
+            if identify_only: return b''
             data = output.read_bytes()
             if len(data) != count:
                 raise OSError('Short DMA transfer')
@@ -208,6 +221,8 @@ def rescue(source, destination, resume=False, retries=1, cancel=lambda: False, c
     if type(retries) is not int or not 0 <= retries <= 5:
         raise ValueError('Retries must be 0..5')
     identity = source.identity
+    # Probe actual ATA identity before creating/truncating any output or journal.
+    if hasattr(source,'validate'): source.validate()
     destination = Path(destination).resolve()
     journal = Path(str(destination)+'.dc-ahci.jsonl')
     if resume:

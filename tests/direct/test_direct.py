@@ -98,6 +98,17 @@ class DirectTests(unittest.TestCase):
         self.assertEqual(device.bits,3)
         device.id=b'WRONG'
         with self.assertRaises(ValueError):relay.cycle()
+    def test_actual_identity_before_resume_mutation(self):
+        source=Source(bytes(1024));dr.rescue(source,self.path)
+        journal=Path(str(self.path)+'.dc-ahci.jsonl')
+        with self.path.open('ab') as stream:stream.write(b'uncommitted')
+        with journal.open('ab') as stream:stream.write(b'torn')
+        image_before,map_before=self.path.read_bytes(),journal.read_bytes()
+        source.validate=lambda:(_ for _ in ()).throw(ValueError('ATA identity changed'))
+        with self.assertRaises(ValueError):dr.rescue(source,self.path,resume=True)
+        self.assertEqual(self.path.read_bytes(),image_before)
+        self.assertEqual(journal.read_bytes(),map_before)
+
     def test_identity_change_is_fatal_not_bad_sector(self):
         source=Source(bytes(1024));source.read=lambda *_:(_ for _ in ()).throw(ValueError('changed'))
         with self.assertRaises(ValueError):dr.rescue(source,self.path)
