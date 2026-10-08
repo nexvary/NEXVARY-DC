@@ -47,7 +47,7 @@ def qualify(output, direct=False):
         from direct_rescue import read_script
         identity = dict(model='QEMU HARDDISK',serial='DC_TEST_SERIAL',firmware='2.5+',bytes=2097152)
         script = output / 'read-check.osc'
-        script.write_text(read_script(identity,0,2048,'/tmp/dc_read_check.bin'))
+        script.write_text(read_script(identity,0,1024,'/tmp/dc_read_check.bin'))
         command = [str(executable),'--tool','--check','--file',str(script)]
         # Upstream requires root even for syntax checking; --check executes no I/O.
         if os.geteuid() != 0:

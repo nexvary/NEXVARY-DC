@@ -14,7 +14,7 @@ import subprocess
 import tempfile
 import time
 
-CHUNK = 1024 * 1024
+CHUNK = 512 * 1024  # Fits OSC's single-page AHCI PRDT (< 1 MiB).
 
 
 def digest(data):
@@ -56,7 +56,38 @@ def guard_controller(pci, port, sysfs=Path('/sys')):
 def checked_text(text, maximum):
     if not isinstance(text, str) or not text or len(text) > maximum or not re.fullmatch(r'[A-Za-z0-9 ._+/-]+', text):
         raise ValueError('Unsupported ATA identity string')
+    if text != text.strip(): raise ValueError('Use ATA identity without padding spaces')
     return text
+
+
+def ata_text_check(label, offset, size, expected):
+    # ATA fields may be left or right padded; compare the same trimmed identity
+    # reported by upstream enumeration without discarding internal characters.
+    return f'''seti ${label}_start = {offset}
+seti ${label}_size = {size}
+while ${label}_size > 0
+ seti $character = buffer ${label}_start
+ if $character != 32
+  break
+ endif
+ seti ${label}_start = ${label}_start + 1
+ seti ${label}_size = ${label}_size - 1
+done
+while ${label}_size > 0
+ seti $last = ${label}_start + ${label}_size
+ seti $last = $last - 1
+ seti $character = buffer $last
+ if $character != 32
+  break
+ endif
+ seti ${label}_size = ${label}_size - 1
+done
+sets ${label} = buffer ${label}_start ${label}_size
+sets $expected_{label} = "{expected}"
+if ${label} != $expected_{label}
+ exit 7
+endif
+'''
 
 
 def read_script(identity, lba, count, output):
@@ -65,7 +96,7 @@ def read_script(identity, lba, count, output):
     serial = checked_text(identity['serial'], 20)
     firmware = checked_text(identity['firmware'], 8)
     sectors = identity['bytes'] // 512
-    if type(lba) is not int or type(count) is not int or not 0 <= lba < sectors or not 1 <= count <= 2048 or count > sectors-lba:
+    if type(lba) is not int or type(count) is not int or not 0 <= lba < sectors or not 1 <= count <= 1024 or count > sectors-lba:
         raise ValueError('Read outside source or transfer limit')
     if not re.fullmatch(r'/[A-Za-z0-9_./-]+', output):
         raise ValueError('Unsafe temporary path')
@@ -81,22 +112,7 @@ endif
 setreadpio
 ata28cmd 0 0 0 0 0 0xa0 0xec
 {check}wordflipbuffer 0 512
-sets $serial = buffer 20 20
-sets $model = buffer 54 40
-sets $firmware = buffer 46 8
-sets $expected_serial = "{serial.ljust(20)}"
-if $serial != $expected_serial
- exit 7
-endif
-sets $expected_model = "{model.ljust(40)}"
-if $model != $expected_model
- exit 7
-endif
-sets $expected_firmware = "{firmware.ljust(8)}"
-if $firmware != $expected_firmware
- exit 7
-endif
-wordflipbuffer 0 512
+{ata_text_check('serial',20,20,serial)}{ata_text_check('model',54,40,model)}{ata_text_check('firmware',46,8,firmware)}wordflipbuffer 0 512
 seti $capacity = buffer 200 qw
 if $capacity != {sectors}
  exit 7
