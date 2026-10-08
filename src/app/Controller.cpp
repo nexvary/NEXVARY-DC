@@ -85,6 +85,17 @@ QJsonObject bootRepairProcess(const QJsonObject &request) {
  auto doc=QJsonDocument::fromJson(p.readAllStandardOutput().trimmed());
  if(p.exitStatus()!=QProcess::NormalExit||!doc.isObject())return fail("Boot helper failed: "+QString::fromUtf8(p.readAllStandardError()).left(2000));
  return doc.object();
+#elif defined(Q_OS_WIN)
+ QTemporaryDir dir;
+ QFile helper(":/storage/firmware_boot.ps1");
+ if(!dir.isValid()||!helper.copy(dir.filePath("firmware_boot.ps1")))return fail("Firmware helper unavailable.");
+ const auto encoded=QString::fromLatin1(QJsonDocument(request).toJson(QJsonDocument::Compact).toBase64());
+ QProcess p;p.start("powershell.exe",{"-NoProfile","-NonInteractive","-ExecutionPolicy","Bypass","-File",dir.filePath("firmware_boot.ps1"),"-RequestBase64",encoded});
+ if(!p.waitForStarted(5000))return fail("Cannot start firmware helper.");
+ p.waitForFinished(-1);
+ auto doc=QJsonDocument::fromJson(p.readAllStandardOutput().trimmed());
+ if(p.exitStatus()!=QProcess::NormalExit||!doc.isObject())return fail("Firmware helper failed: "+QString::fromUtf8(p.readAllStandardError()).left(2000));
+ return doc.object();
 #else
  Q_UNUSED(request);return fail("GRUB repair runs from a Linux live environment. Windows does not repair Linux boot loaders in this release.");
 #endif
@@ -138,6 +149,11 @@ void Controller::executeBootRepair(const QString &confirmation) {
  if(plan.isEmpty()){setResult(fail("Inspect the boot repair plan first."));return;}
  QJsonObject request{{"action","apply"},{"plan",plan},{"confirmation",confirmation}};
  start("boot_repair",[request]{return bootRepairProcess(request);});
+}
+void Controller::prepareFirmwareBoot(const QString &id) {
+ if(m_busy)return;
+ QJsonObject request{{"action",id.isEmpty()?"inventory":"plan"},{"id",id}};
+ start("boot_repair_plan",[request]{return bootRepairProcess(request);});
 }
 void Controller::refresh() {
  if(m_busy)return;

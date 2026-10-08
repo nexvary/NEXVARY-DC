@@ -12,7 +12,7 @@ contents remain candidates; no overwrite/TRIM recovery is claimed.
 
 Windows Setup and Portable still include SMART and all existing recovery/rescue
 features. The portable package also includes the live-Linux helper; Windows
-itself does not execute GRUB repair. Download exact sizes/hashes and source commit
+itself can restore priority of an existing GRUB/shim UEFI entry with firmware/BCD backup and stale-plan checks; it does not reinstall GRUB. Download exact sizes/hashes and source commit
 from release-manifest.json. Publication is gated on Linux/Windows builds, tests,
 portable/installer lifecycle, reference hybrid Linux boots and repaired-disk
 BIOS/UEFI kernel handoff tests for the same commit.

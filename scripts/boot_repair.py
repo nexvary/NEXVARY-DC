@@ -42,7 +42,7 @@ def flatten(nodes):
 
 def inventory():
     nodes = list(flatten(json.loads(run(['lsblk', '--json', '--bytes', '--paths',
-        '--output', 'PATH,TYPE,SIZE,RO,SERIAL,WWN,UUID,PARTUUID,PARTTYPE,PKNAME,FSTYPE,PTTYPE,MOUNTPOINTS']))['blockdevices']))
+        '--output', 'PATH,TYPE,SIZE,RO,LOG-SEC,SERIAL,WWN,UUID,PARTUUID,PARTTYPE,PKNAME,FSTYPE,PTTYPE,MOUNTPOINTS']))['blockdevices']))
     for node in nodes:
         if node['type'] == 'part':
             node['partn'] = int((pathlib.Path('/sys/class/block') / pathlib.Path(node['path']).name / 'partition').read_text())
@@ -133,7 +133,7 @@ def plan(root, esp, disk, mode, backup):
               'configSha256': sha(config), 'esp': '', 'espIdentity': None,
               'firmware': '', 'created': int(time.time()), 'secureBoot': False}
     if mode == 'bios':
-        if target.get('pttype') != 'dos':
+        if target.get('pttype') != 'dos' or target.get('log-sec') != 512:
             raise ValueError('BIOS repair currently supports MBR disks only.')
         # Preserve partition table and all embedding bytes that GRUB may use.
         with open(target['path'], 'rb') as f:

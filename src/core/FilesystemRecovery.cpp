@@ -248,7 +248,7 @@ bool fat32(Image &im,Output &out){
    if(attr&8||marker=='.')continue;
    if(name.isEmpty()){name=QString::fromLatin1(e.left(8)).trimmed();if(isDeleted)name[0]='_';auto ext=QString::fromLatin1(e.mid(8,3)).trimmed();if(!ext.isEmpty())name+='.'+ext;}
    auto first=((quint32(u16(e,20))<<16)|u16(e,26))&0x0fffffff;auto size=u32(e,28);
-   if(attr&16){bool gone=isDeleted||dir.deleted;if(valid(first)&&(!gone||next(first)>=2))queue.append({first,dir.path+"/"+safe(name),gone,dir.parentClusters});else if(gone)out.issue(name,"Deleted directory FAT chain was cleared or invalid");continue;}
+   if(attr&16){bool gone=isDeleted||dir.deleted;if(valid(first)&&(!gone||next(first)>=2)){if(gone)queue.append({first,dir.path+"/"+safe(name),gone,dir.parentClusters});else queue.prepend({first,dir.path+"/"+safe(name),false,{}});}else if(gone)out.issue(name,"Deleted directory FAT chain was cleared or invalid");continue;}
    if(isDeleted||dir.deleted){deleted.append({name,dir.path,first,size,dir.parentClusters});continue;}
    auto allocated=chain(first,size,false);if(!allocated.valid&&size){out.issue(name,"Live allocation corrupt; refusing deleted recovery for this volume");return true;}
    for(const auto &r:allocated.runs)owned.insert(quint32((r.offset-data)/cluster)+2);
@@ -258,9 +258,9 @@ bool fat32(Image &im,Output &out){
   if(!e.size){s.valid=true;s.resident=QByteArray("");}
   else if(!valid(e.first)){out.issue(e.name,"Invalid first cluster");continue;}
   else if(next(e.first)==0){auto n=(quint64(e.size)+cluster-1)/cluster;if(n>quint64(clusters)+2-e.first){out.issue(e.name,"Extent outside volume");continue;}bool free=true;
-   for(quint64 j=0;j<n&&out.running();++j)if(next(e.first+quint32(j))!=0||owned.contains(e.first+quint32(j))){free=false;break;}if(!free){out.issue(e.name,"Candidate overlaps allocated clusters");continue;}
+   for(quint64 j=0;j<n&&out.running();++j)if(next(e.first+quint32(j))!=0||(owned.contains(e.first+quint32(j))||e.parentClusters.contains(e.first+quint32(j)))){free=false;break;}if(!free){out.issue(e.name,"Candidate overlaps allocated clusters");continue;}
    s.runs<<Run{off(e.first),qint64(n)*cluster};s.size=s.initialized=e.size;s.valid=true;
-  }else {s=chain(e.first,e.size,false);if(!s.valid){out.issue(e.name,"Incomplete retained FAT chain");continue;}bool conflict=false;for(const auto &r:s.runs)if(owned.contains(quint32((r.offset-data)/cluster)+2))conflict=true;if(conflict){out.issue(e.name,"Retained chain overlaps live files");continue;}}
+  }else {s=chain(e.first,e.size,false);if(!s.valid){out.issue(e.name,"Incomplete retained FAT chain");continue;}bool conflict=false;for(const auto &r:s.runs)if(owned.contains(quint32((r.offset-data)/cluster)+2)||e.parentClusters.contains(quint32((r.offset-data)/cluster)+2))conflict=true;if(conflict){out.issue(e.name,"Retained chain overlaps live files");continue;}}
   out.save(e.name,e.path,s,"Deleted FAT32 entry. Retained unreferenced FAT chain or contiguous free-cluster hypothesis; LFN association is tentative after deletion. Review content.",candidate);
  }
  return true;

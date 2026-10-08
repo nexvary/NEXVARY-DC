@@ -39,3 +39,5 @@ Hardware-only procedure: [HARDWARE-TESTS-AR.md](HARDWARE-TESTS-AR.md).
 - QEMU BIOS/MBR and OVMF UEFI repaired-disk tests: initial disk has no GRUB loader, helper repairs from a RAM-based live guest, then firmware boots the disk and GRUB hands off to a Linux kernel. Existing Windows firmware entry and loader placeholder are preserved; this does not boot Windows. Secure Boot is disabled.
 
 GRUB repair supports plain ext4 root with /boot inside it and an intact grub.cfg. It does not support separate /boot, encrypted/LVM/RAID/Btrfs roots, BIOS/GPT, missing/corrupt menu configuration or Windows BCD rebuilding. No automatic raw-sector rollback is claimed; verified backups and failure reports are retained.
+
+Windows firmware-priority repair is limited to an existing GRUB/shim entry in the current firmware order. It preserves other entries and makes no partition writes. BCDEdit displayorder parsing must be recognized; otherwise it refuses safely. Parser/localization fixtures do not certify real device firmware writes.
