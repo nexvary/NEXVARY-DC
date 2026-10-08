@@ -377,6 +377,7 @@ jobs:
           p=pathlib.Path('release/NEXVARY-DC-0.7.0-Linux-Direct-AHCI.tar.gz')
           data['files'].append({'name':p.name,'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()})
           pathlib.Path('release/release-manifest.json').write_text(json.dumps(data,indent=2))
+          pathlib.Path('release/SHA256SUMS.txt').write_text(''.join(row['sha256']+'  '+row['name']+'\n' for row in data['files']))
           for row in data['files']:
               p=pathlib.Path('release')/row['name']
               assert p.stat().st_size==row['bytes']

@@ -8,6 +8,7 @@ add_library(dc_core STATIC src/core/Operations.cpp src/core/StoragePolicy.cpp sr
 target_include_directories(dc_core PUBLIC src/core)
 target_link_libraries(dc_core PUBLIC Qt6::Core)
 qt_add_executable(nexvary_dc src/app/main.cpp src/app/Controller.cpp src/app/Controller.h)
+target_compile_definitions(nexvary_dc PRIVATE DC_APP_VERSION="${PROJECT_VERSION}")
 target_link_libraries(nexvary_dc PRIVATE dc_core Qt6::Concurrent Qt6::Gui Qt6::Quick Qt6::QuickControls2 Qt6::Sql)
 qt_add_qml_module(nexvary_dc URI Nexvary.DC VERSION 1.0 QML_FILES qml/Main.qml qml/ActionButton.qml qml/Panel.qml qml/DiskIcon.qml qml/AppIcon.qml qml/AboutWorkspace.qml qml/StorageWorkspace.qml qml/BootRepairWorkspace.qml qml/ResultPanel.qml)
 file(GLOB DC_ICON_FILES CONFIGURE_DEPENDS assets/icons/*.png)
