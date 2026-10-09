@@ -15,6 +15,24 @@ function Storage($request) {
  $row=($lines -join "`n") | ConvertFrom-Json
  return @{code=$code;row=$row}
 }
+function DiskProof($disk) {
+ # Windows can report a blank removable QEMU disk as MBR before our helper runs.
+ # Compare actual metadata and bytes against that baseline, rather than RAW.
+ $current=Get-Disk -Number $disk.Number
+ $parts=@(Get-Partition -DiskNumber $disk.Number -ErrorAction SilentlyContinue | Select-Object PartitionNumber,Offset,Size,Type)
+ $stream=[IO.FileStream]::new("\\.\PHYSICALDRIVE$($disk.Number)",[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite)
+ $hash=[Security.Cryptography.SHA256]::Create()
+ try {
+  $proof=@()
+  foreach($offset in @([long]0,[long]($current.Size-1MB))) {
+   [void]$stream.Seek($offset,[IO.SeekOrigin]::Begin)
+   $buffer=[byte[]]::new(1MB);$done=0
+   while($done -lt $buffer.Length){$read=$stream.Read($buffer,$done,$buffer.Length-$done);if(!$read){throw 'Short guard-proof read'};$done+=$read}
+   $proof+=[Convert]::ToBase64String($hash.ComputeHash($buffer))
+  }
+  return ([ordered]@{style=[string]$current.PartitionStyle;size=[long]$current.Size;parts=$parts;hashes=$proof} | ConvertTo-Json -Compress -Depth 5)
+ }finally{$stream.Dispose();$hash.Dispose()}
+}
 try {
  Proof 'DC_INSTALLED_WINDOWS_BOOT_OK'
  $secure=(Get-ItemProperty HKLM:\SYSTEM\CurrentControlSet\Control\SecureBoot\State -ErrorAction SilentlyContinue).UEFISecureBootEnabled
@@ -35,15 +53,17 @@ try {
  $guard=Storage (Request $system 'layout')
  if($guard.code -eq 0 -or $guard.row.status -ne 'error'){throw 'Production system-disk guard did not reject'}
  Proof 'DC_SYSTEM_DISK_REFUSED'
+ $usbBefore=DiskProof $usb[0]
+ $smallBefore=DiskProof $small[0]
  $request=Request $usb[0] $action
  $request.serial='CHANGED_IDENTITY'
  $guard=Storage $request
  if($guard.code -eq 0 -or $guard.row.status -ne 'error'){throw 'Changed identity was accepted'}
- if([string](Get-Disk -Number $usb[0].Number).PartitionStyle -ne 'RAW'){throw 'Identity rejection modified target'}
+ if((DiskProof $usb[0]) -ne $usbBefore){throw 'Identity rejection modified target'}
  Proof 'DC_USB_IDENTITY_REFUSED'
  $guard=Storage (Request $small[0] $action)
  if($guard.code -eq 0 -or $guard.row.status -ne 'error' -or $guard.row.message -notmatch 'space'){throw 'Insufficient destination space was not rejected'}
- if([string](Get-Disk -Number $small[0].Number).PartitionStyle -ne 'RAW'){throw 'Space rejection modified target'}
+ if((DiskProof $small[0]) -ne $smallBefore){throw 'Space rejection modified target'}
  Proof 'DC_USB_SPACE_REFUSED'
  Proof 'DC_USB_PREPARATION_BEGIN'
  $prepared=Storage (Request $usb[0] $action)
