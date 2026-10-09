@@ -1,4 +1,4 @@
-# NEXVARY Disk Care 0.7.0
+# NEXVARY Disk Care 0.8.0
 
 C++20 / Qt 6 desktop storage toolkit with Arabic RTL and English. Original colored icon set, developer page and bilingual installer. This remains an experimental build; physical hardware compatibility is not established by CI.
 
@@ -53,14 +53,14 @@ See [scope and nine observations](docs/OBSERVATIONS.md), [research](docs/RESEARC
 ## Boot preparation
 Windows x64 UEFI/GPT and BIOS+UEFI/MBR paths retain target protection. Large install.wim files are split with DISM into a temporary folder **before erasure**, then each SWM part is copied and SHA-256 compared. This needs temporary free space. Hybrid Linux writing locks target volumes and verifies output by SHA-256. ISO markers and copied files do not establish bootability or Secure Boot support. Boot-mode compatibility depends on the ISO and firmware.
 
-See [0.7.0 verification and limits](docs/VERIFICATION.md), [release notes](docs/RELEASE-0.7.0.md) and [hardware-only checklist in Arabic](docs/HARDWARE-TESTS-AR.md). Release assets include a manifest with the exact tested commit, CI run, byte sizes and SHA-256. The release job requires both OS verification jobs, Linux DMA/boot qualification and all three Windows VM modes to succeed on the delivered commit.
+See [0.8.0 verification and limits](docs/VERIFICATION.md), [release notes](docs/RELEASE-0.8.0.md) and [hardware-only checklist in Arabic](docs/HARDWARE-TESTS-AR.md). Release assets include a manifest with the exact tested commit, CI run, byte sizes and SHA-256. The release job requires both OS verification jobs, Linux DMA/boot qualification and all three Windows VM modes to succeed on the delivered commit.
 
-## Boot repair (0.7.0)
+## Boot repair (0.8.0)
 Offline x64 live-Linux GRUB repair is separate from creating installation media. Supports mounted plain ext4 root, BIOS/MBR and UEFI without Secure Boot, verified backups, identity revalidation and a Windows UEFI chainloader entry when its loader survives. [Arabic procedure and limits](docs/BOOT-REPAIR-AR.md). Windows packages include the helper for use from live Linux.
 
 Recovery additionally supports 4Kn GPT images, retained deleted FAT32 folder chains and bounded NTFS file ATTRIBUTE_LIST extensions (external MFT extensions remain unsupported).
 
-## Advanced rescue (0.7.0)
+## Advanced rescue (0.8.0)
 Selective retry validates a full previous image and original JSONL map, copies healthy
 image sectors to another image and reads only recorded failed sectors from the disk.
 The original evidence is preserved. New output/resume identity checks and readback
@@ -70,5 +70,9 @@ through this GUI path is currently Windows-only. Its OS raw reads have no hardwa
 SMART reports now include evidence-based connection/sector/model capabilities and explicit
 zero certified firmware profiles. See [selective retry and historical 0.6 assessment](docs/ADVANCED-RESCUE-AR.md).
 
-## Direct AHCI and source power (0.7.0)
+## Direct AHCI and source power (0.8.0)
 Separate Linux expert helper: restricted OpenSuperClone process, exact PCI/port and ATA identity, read-only source commands, sector fallback and validated resumable SHA-256 map. Fast-pass deferral, targeted retry into a separate image, reverse missing-sector order, bounded ATA timeouts and GNU ddrescue map export are supported; virtual disk/OSCDriver and Direct IDE are not integrated. Optional uniquely identified DCTTech USBRelay2/4/8 cycling for isolated source-only +5V/+12V channels. [Requirements and Arabic instructions](docs/DIRECT-AHCI-AR.md). Windows bundles helper sources; it does not contain a Windows AHCI driver. No firmware/SA/translator family is certified. Release qualification requires installed Windows evaluation VM boot in BIOS, UEFI and UEFI Secure Boot, confirmed after first logon, followed by the production Windows preparation backend writing an emulated USB and that USB reaching Windows PE. System disk, changed identity and insufficient space must be refused before target mutation. A test-only PE batch shell writes proof to a separate disposable FAT USB; signed EFI executables stay unchanged. Read the run results before claiming these gates passed. One pinned evaluation ISO and OVMF key set do not establish compatibility of other images/firmware.
+
+## SMART and Windows recovery guidance (0.8.0)
+
+Full native SMART tables, recorded trends and bounded alerts; nonzero 05/C5/C6 warns even when overall SMART passes. Windows includes complete pinned CrystalDiskInfo 9.9.2 Standard Edition with native report import and its separately identified original licensed advanced panel. [Arabic details and limits](docs/SMART-CRYSTAL-AR.md). The 0xc0000001 workspace is data-first diagnostic guidance, not automatic BCD reconstruction. Release gates and limitations: [0.8.0 notes](docs/RELEASE-0.8.0.md).

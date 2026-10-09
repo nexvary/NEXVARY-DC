@@ -46,13 +46,33 @@ QJsonObject summarizeSmart(const QJsonObject &raw) {
  s.insert("serial",raw.value("serial_number"));s.insert("firmware",raw.value("firmware_version"));
  s.insert("temperature",raw.value("temperature").toObject().value("current"));
  s.insert("hours",raw.value("power_on_time").toObject().value("hours"));
+ bool caution=false,failing=false;
  QJsonArray attrs;
  for(auto item:raw.value("ata_smart_attributes").toObject().value("table").toArray()) {
   const auto a=item.toObject();const int id=a.value("id").toInt();
-  if(QList<int>{5,9,187,188,194,197,198,199}.contains(id))attrs.append(QJsonObject{{"id",id},{"name",a.value("name")},{"raw",a.value("raw").toObject().value("value")},{"value",a.value("value")},{"threshold",a.value("thresh")},{"whenFailed",a.value("when_failed")}});
+  const auto count=a.value("raw").toObject().value("value").toDouble();
+  const bool warning=QList<int>{5,197,198}.contains(id)&&count>0;
+  caution|=warning;
+  failing|=a.value("when_failed").toString()=="now";
+  attrs.append(QJsonObject{{"id",id},{"hexId",QString::number(id,16).toUpper().rightJustified(2,'0')},{"name",a.value("name")},{"raw",a.value("raw").toObject().value("value")},{"rawText",a.value("raw").toObject().value("string")},{"rawHex",QString::number(quint64(count),16).toUpper().rightJustified(12,'0')},{"value",a.value("value")},{"worst",a.value("worst")},{"threshold",a.value("thresh")},{"whenFailed",a.value("when_failed")},{"warning",warning}});
+  if(id==5)s.insert("reallocated",count);
+  if(id==197)s.insert("pending",count);
+  if(id==198)s.insert("uncorrectable",count);
  }
  const auto nvme=raw.value("nvme_smart_health_information_log").toObject();
- for(const auto &key:QStringList{"critical_warning","percentage_used","media_errors","num_err_log_entries","available_spare"})if(nvme.contains(key))attrs.append(QJsonObject{{"name",key},{"raw",nvme.value(key)}});
+ for(auto it=nvme.begin();it!=nvme.end();++it)attrs.append(QJsonObject{{"name",it.key()},{"raw",it.value()}});
+ caution|=nvme.value("critical_warning").toDouble()>0||nvme.value("media_errors").toDouble()>0;
+ caution|=nvme.contains("percentage_used")&&nvme.value("percentage_used").toDouble()>=100;
+ if(failing)s.insert("health","failed");
+ if(s.value("health")=="passed"&&caution)s.insert("health","caution");
+ s.insert("warningIndicatorsPresent",caution);
+ s.insert("rescueFirst",caution||s.value("health")=="failed");
+ s.insert("rotationRate",raw.value("rotation_rate"));
+ s.insert("powerCycles",raw.value("power_cycle_count"));
+ s.insert("interface",raw.value("device").toObject().value("protocol"));
+ s.insert("capacityBytes",raw.value("user_capacity").toObject().value("bytes"));
+ s.insert("sataVersion",raw.value("sata_version").toObject());
+ s.insert("nvme",nvme);
  s.insert("attributes",attrs);
  return s;
 }

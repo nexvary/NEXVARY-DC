@@ -4,6 +4,8 @@
 #include "MediaRead.h"
 #include "Recovery.h"
 #include "FilesystemRecovery.h"
+#include "CrystalEngine.h"
+#include <QSettings>
 #include <QCoreApplication>
 #include <QTemporaryDir>
 #include <QUuid>
@@ -108,8 +110,18 @@ Controller::Controller(QObject *parent):QObject(parent) {
   QSqlQuery q(m_db);
   if(!q.exec("CREATE TABLE IF NOT EXISTS operations(id INTEGER PRIMARY KEY, created TEXT, operation TEXT, report TEXT)"))
    m_storageNotice="History database initialization failed; reports remain exportable.";
+  q.exec("CREATE TABLE IF NOT EXISTS smart_samples(id INTEGER PRIMARY KEY, serial TEXT, device TEXT, captured TEXT, summary TEXT)");
  } else m_storageNotice="History unavailable; reports remain exportable.";
  loadHistory();
+ m_settingsPath=QDir(data).filePath("smart-settings.ini");
+ QSettings settings(m_settingsPath,QSettings::IniFormat);
+ const QVariantMap defaults{{"hideSerial",false},{"hexRaw",true},{"fahrenheit",false},{"temperatureAlert",55},{"reallocatedAlert",1},{"pendingAlert",1},{"uncorrectableAlert",1},{"refreshSeconds",300}};
+ for(auto it=defaults.cbegin();it!=defaults.cend();++it){
+  const auto stored=settings.value(it.key(),it.value());
+  if(QStringList{"hideSerial","hexRaw","fahrenheit"}.contains(it.key()))m_smartPreferences.insert(it.key(),stored.toBool());
+  else {bool ok=false;int n=stored.toInt(&ok);const int lo=it.key()=="temperatureAlert"?20:it.key()=="refreshSeconds"?60:1,hi=it.key()=="temperatureAlert"?90:it.key()=="refreshSeconds"?3600:65535;m_smartPreferences.insert(it.key(),ok&&n>=lo&&n<=hi?n:it.value().toInt());}
+ }
+ connect(&m_monitor,&QTimer::timeout,this,[this]{if(!m_busy&&!m_healthDevice.isEmpty())inspectHealth(m_healthDevice);});
  connect(&m_watcher,&QFutureWatcher<QJsonObject>::finished,this,[this]{
   auto result=m_watcher.result();
   if(result.value("operation")=="disk_discovery" && result.value("status")=="completed") {
@@ -125,7 +137,13 @@ Controller::Controller(QObject *parent):QObject(parent) {
   m_busy=false;
   // An error or cancelled operation must never show a completed progress bar.
   if(result.value("status")=="completed" || result.value("status")=="mismatch")m_progress=1;
-  setResult(result);emit stateChanged();
+  setResult(result);
+  if(m_operation=="smart_read")recordHealth(result);
+  if(m_operation=="crystal_read"){
+   m_crystalDisks=result.value("drives").toArray().toVariantList();if(result.value("status")!="completed")recordHealth(result);emit healthChanged();
+   if(result.value("status")=="completed"&&m_crystalDisks.size()==1)selectCrystalDisk(0);
+  }
+  emit stateChanged();
  });
  refresh();
 }
@@ -173,9 +191,10 @@ void Controller::inspectHealth(const QString &device) {
  if(m_busy)return;
  bool known=false;for(const auto &d:m_disks) if(d.toMap().value("device").toString()==device)known=true;
  if(!known) {setResult(fail("Select an enumerated disk. Arbitrary device paths are rejected."));return;}
+ m_healthDevice=device;
  auto engine=QDir(QCoreApplication::applicationDirPath()).filePath("engines/smartctl.exe");
  if(!QFile::exists(engine))engine=QStandardPaths::findExecutable("smartctl");
- if(engine.isEmpty()){setResult(fail("smartctl is not installed or not on PATH. SMART unavailable; disk health is unknown."));return;}
+ if(engine.isEmpty()){const auto failure=fail("smartctl is not installed or not on PATH. SMART unavailable; disk health is unknown.");setResult(failure);recordHealth(failure);return;}
  start("smart_read",[this,engine,device]{return process(engine,{"--json","--all",device},true,&m_cancel);});
 }
 void Controller::scanImage(const QString &path) {
@@ -193,6 +212,61 @@ void Controller::testCapacity(const QString &dir,int mib,bool ack) {
 void Controller::cancel(){if(interruptible())m_cancel=true;}
 QString Controller::fileUrl(const QString &path) const {return QUrl::fromLocalFile(path).toString();}
 QString Controller::localPath(const QString &url) const {QUrl u(url);return u.isLocalFile()?u.toLocalFile():url;}
+void Controller::recordHealth(const QJsonObject &input) {
+ auto value=input;value.insert("capturedAt",QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+ if(value.value("status")!="completed"||!value.contains("summary")){value.insert("summary",QJsonObject{{"health","unknown"}});m_health=value.toVariantMap();m_healthSamples.clear();m_monitor.stop();emit healthChanged();emit healthAlert("SMART read failed or cancelled; disk health is unknown and monitoring stopped.");return;}
+ const auto summary=value.value("summary").toObject();const auto serial=summary.value("serial").toString().trimmed();
+ if(m_monitor.isActive()&&serial!=m_monitorSerial){m_monitor.stop();emit healthAlert("Disk identity changed; automatic monitoring stopped.");}
+ value.insert("requestedDevice",m_healthDevice);m_health=value.toVariantMap();m_healthSamples.clear();
+ if(m_db.isOpen()&&!serial.isEmpty()){
+  QSqlQuery q(m_db);q.prepare("INSERT INTO smart_samples(serial,device,captured,summary) VALUES(?,?,?,?)");q.addBindValue(serial);q.addBindValue(m_healthDevice);q.addBindValue(value.value("capturedAt").toString());q.addBindValue(QString::fromUtf8(QJsonDocument(summary).toJson(QJsonDocument::Compact)));q.exec();
+  q.prepare("DELETE FROM smart_samples WHERE serial=? AND id NOT IN (SELECT id FROM smart_samples WHERE serial=? ORDER BY id DESC LIMIT 10000)");q.addBindValue(serial);q.addBindValue(serial);q.exec();
+  q.prepare("SELECT captured,summary FROM smart_samples WHERE serial=? ORDER BY id DESC LIMIT 500");q.addBindValue(serial);q.exec();while(q.next()){auto row=QJsonDocument::fromJson(q.value(1).toString().toUtf8()).object().toVariantMap();row.insert("capturedAt",q.value(0));m_healthSamples.prepend(row);}
+ }
+ QStringList alerts;
+ if(summary.value("health")=="failed")alerts.append("SMART reports failing health");
+ for(auto key:QStringList{"reallocated","pending","uncorrectable"})if(summary.contains(key)&&summary.value(key).toDouble()>=m_smartPreferences.value(key+"Alert",1).toInt())alerts.append(key+"="+QString::number(summary.value(key).toDouble(),'f',0));
+ if(summary.contains("temperature")&&!summary.value("temperature").isNull()&&summary.value("temperature").toDouble()>=m_smartPreferences.value("temperatureAlert",55).toInt())alerts.append("temperature="+QString::number(summary.value("temperature").toDouble()));
+ if(summary.value("rescueFirst").toBool()&&alerts.isEmpty())alerts.append("Fault indicators: rescue data before repairs");
+ const QString signature=serial+":"+alerts.join("; ");
+ if(!alerts.isEmpty()&&signature!=m_lastHealthAlert)emit healthAlert(alerts.join("; "));
+ m_lastHealthAlert=signature;emit healthChanged();
+}
+void Controller::setSmartPreferences(const QVariantMap &preferences) {
+ if(m_busy)return;
+ auto updated=m_smartPreferences;
+ for(auto it=preferences.cbegin();it!=preferences.cend();++it){
+  if(QStringList{"hideSerial","hexRaw","fahrenheit"}.contains(it.key()))updated.insert(it.key(),it.value().toBool());
+  else if(QStringList{"temperatureAlert","reallocatedAlert","pendingAlert","uncorrectableAlert","refreshSeconds"}.contains(it.key())){
+   bool ok=false;int n=it.value().toInt(&ok);const int minimum=it.key()=="temperatureAlert"?20:it.key()=="refreshSeconds"?60:1,maximum=it.key()=="temperatureAlert"?90:it.key()=="refreshSeconds"?3600:65535;
+   if(!ok||n<minimum||n>maximum){setResult(fail("Invalid SMART notification setting."));return;}updated.insert(it.key(),n);
+  }else{setResult(fail("Unsupported SMART preference."));return;}
+ }
+ QSettings settings(m_settingsPath,QSettings::IniFormat);for(auto it=updated.cbegin();it!=updated.cend();++it)settings.setValue(it.key(),it.value());settings.sync();m_smartPreferences=updated;
+ if(m_monitor.isActive())m_monitor.setInterval(updated.value("refreshSeconds").toInt()*1000);emit healthChanged();
+}
+void Controller::setMonitoring(bool enabled) {
+ if(!enabled){m_monitor.stop();emit healthChanged();return;}
+ const auto summary=m_health.value("summary").toMap();const auto serial=summary.value("serial").toString().trimmed();
+ if(m_busy||m_healthDevice.isEmpty()||serial.isEmpty()||summary.value("health")=="unknown"||m_health.value("status")!="completed"){setResult(fail("Read a known disk with an exact serial before enabling monitoring."));return;}
+ m_monitorSerial=serial;m_monitor.start(m_smartPreferences.value("refreshSeconds",300).toInt()*1000);emit healthChanged();
+}
+void Controller::readCrystalHealth() {
+ if(m_busy)return;
+ if(!administrator()){setResult(fail("Administrator permission is required for the Windows SMART engine."));return;}
+ const auto package=QDir(QCoreApplication::applicationDirPath()).filePath("engines/crystaldiskinfo");start("crystal_read",[this,package]{return dc::readCrystalEngine(package,&m_cancel);});
+}
+void Controller::selectCrystalDisk(int index) {
+ if(m_busy||index<0||index>=m_crystalDisks.size())return;
+ const auto disk=QJsonObject::fromVariantMap(m_crystalDisks[index].toMap());const auto summary=disk.value("summary").toObject();const auto serial=summary.value("serial").toString().trimmed();
+ m_healthDevice.clear();for(const auto &item:m_disks){auto d=item.toMap();if(!serial.isEmpty()&&d.value("serial").toString().trimmed()==serial)m_healthDevice=d.value("device").toString();}
+ recordHealth({{"status","completed"},{"operation","smart_read"},{"engine","CrystalDiskInfo 9.9.2"},{"summary",summary},{"fields",disk.value("fields")}});
+}
+void Controller::openCrystalPanel(bool arabic,bool acknowledged) {
+ if(m_busy)return;if(!acknowledged||!administrator()){setResult(fail("Review the advanced health controls and run as administrator before opening the panel."));return;}
+ const auto package=QDir(QCoreApplication::applicationDirPath()).filePath("engines/crystaldiskinfo"),state=QDir(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)).filePath("CrystalDiskInfo-9.9.2");
+ start("crystal_panel",[package,state,arabic]{return dc::launchCrystalEngine(package,state,arabic);});
+}
 void Controller::setResult(const QJsonObject &input) {
  auto result=input;result.insert("appVersion",QCoreApplication::applicationVersion());result.insert("recordedAt",QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
  m_report=QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Indented));

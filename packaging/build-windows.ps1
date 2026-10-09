@@ -25,6 +25,7 @@ foreach ($dll in @("msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll")) {
 Write-Host "Bundled app-local CRT from $($crt.Name)"
 
 & ./packaging/bundle-engines.ps1 -OutputDir $OutputDir
+& ./packaging/bundle-cdi.ps1 -OutputDir $OutputDir
 Copy-Item NOTICE.md $OutputDir -Force
 $qtLicense=Join-Path (Split-Path $qtBin -Parent) 'licenses'
 if(Test-Path $qtLicense){Copy-Item $qtLicense (Join-Path $OutputDir 'licenses/Qt') -Recurse -Force}

@@ -1,4 +1,4 @@
-NEXVARY DISK CARE 0.7.0
+NEXVARY DISK CARE 0.8.0
 Storage diagnostics, metadata recovery and verified imaging
 
 INCLUDED FEATURES
@@ -51,3 +51,6 @@ Windows bundles helper sources/instructions, not a native AHCI transport. No cer
 Release qualification requires installed Windows and production-prepared virtual USB boot to Windows PE in BIOS/UEFI/UEFI Secure Boot for one pinned evaluation ISO; this is not universal Secure Boot certification.
 Direct AHCI fast pass defers unreadable chunks; targeted retry into a separate image, reverse missing-sector reads, bounded ATA timeout and verified ddrescue map export.
 OSCDriver virtual disk, Direct IDE and head analysis are not integrated in NEXVARY.
+Full native SMART tables, local samples/trends and bounded notification settings; raising alert thresholds does not hide 05/C5/C6 risk.
+Complete bundled CrystalDiskInfo 9.9.2 Windows engine, native report import and separately identified licensed original panel; AAM/APM, mail, resident monitoring and graphs depend on hardware/configuration.
+Guided 0xc0000001 recovery starts with data rescue and official Windows tools; it does not automatically rebuild BCD.

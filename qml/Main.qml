@@ -9,6 +9,8 @@ ApplicationWindow {
  property bool arabic:true
  property int page:0
  property bool bootRepairMode:false
+ property bool windowsRecoveryMode:false
+ property var healthProof:null
  property int diskIndex:-1
  property var selectedDisk: diskIndex>=0&&diskIndex<backend.disks.length?backend.disks[diskIndex]:({})
  property string notice:""
@@ -42,7 +44,7 @@ ApplicationWindow {
  LayoutMirroring.enabled:arabic;LayoutMirroring.childrenInherit:true
  font.family:Qt.platform.os==="windows"?"Segoe UI":"DejaVu Sans";font.pixelSize:13
  palette.placeholderText:"#89a9c0";palette.text:"#dce9f4";palette.windowText:"#dce9f4";palette.base:"#0c1b28";palette.button:"#19344a";palette.buttonText:"#dce9f4";palette.highlight:"#3985bd";palette.highlightedText:"#ffffff"
- Connections {target:backend;function onDisksChanged(){if(root.diskIndex>=backend.disks.length)root.diskIndex=-1}}
+ Connections {target:backend;function onHealthAlert(message){root.notice=root.t("تنبيه القرص: ","Drive alert: ")+message}function onDisksChanged(){if(root.diskIndex>=backend.disks.length)root.diskIndex=-1}}
  FileDialog {id:sourceDialog;onAccepted:imagePath.text=backend.localPath(selectedFile.toString())}
  FileDialog {id:priorRescueDialog;onAccepted:priorRescuePath.text=backend.localPath(selectedFile.toString())}
  FileDialog {id:rescueDialog;fileMode:FileDialog.SaveFile;onAccepted:rescuePath.text=backend.localPath(selectedFile.toString())}
@@ -110,7 +112,7 @@ ApplicationWindow {
      RowLayout {visible:root.page===0;Layout.fillWidth:true;spacing:10
       Repeater {model:[{n:backend.disks.length,title:root.t("أقراص فعلية","Physical disks"),icon:"disk"},{n:backend.volumes.length,title:root.t("وحدات مركبة","Mounted volumes"),icon:"partition"},{n:backend.history.length,title:root.t("تقارير محفوظة","Saved reports"),icon:"reports"}];delegate:Rectangle {required property var modelData;Layout.fillWidth:true;implicitHeight:78;radius:9;color:"#112131";border.color:"#2b4357";RowLayout {anchors.fill:parent;anchors.margins:12;AppIcon {name:modelData.icon;Layout.preferredWidth:38;Layout.preferredHeight:38}ColumnLayout {Layout.fillWidth:true;Label {text:modelData.n;color:"#e6f3ff";font.pixelSize:23;font.bold:true}Label {text:modelData.title;color:"#92b0c7";font.pixelSize:11}}}}}
      }
-     Panel {visible:root.page===0||root.page===1;Layout.fillWidth:true
+     Panel {visible:root.page===0;Layout.fillWidth:true
       ColumnLayout {anchors.fill:parent;spacing:10
        RowLayout {Label {text:root.t("الأقراص المتصلة","Connected disks");font.pixelSize:18;font.bold:true;color:"#e4f1fc";Layout.fillWidth:true}Label {text:root.t("حدد قرصًا لعرض بياناته","Select a disk to inspect");color:"#829fb7";font.pixelSize:11}}
        Label {visible:backend.disks.length===0;text:root.t("لم تظهر أقراص. راجع نتيجة الاكتشاف أو حدّث القائمة.","No disks found. Check discovery results or refresh.");color:"#f2bd75";Layout.fillWidth:true;wrapMode:Text.WordWrap}
@@ -126,6 +128,7 @@ ApplicationWindow {
      GridLayout {visible:root.page===0;Layout.fillWidth:true;columns:2;columnSpacing:10;rowSpacing:10
       Repeater {model:[{p:7,k:"partition",title:root.t("الفورمات وإدارة الأقسام","Format & manage partitions"),desc:root.t("NTFS / exFAT / FAT32 • GPT / MBR","NTFS / exFAT / FAT32 • GPT / MBR")},{p:8,k:"boot",title:root.t("وسيط تثبيت Windows","Windows installation media"),desc:root.t("UEFI x64 • تحقق من الملفات","UEFI x64 • verified file copy")},{p:5,k:"capacity",title:root.t("اختبار الفلاشات والكروت","Test flash drives & cards"),desc:root.t("كتابة ثم قراءة • كشف اختلاف البيانات","Write then read • detect mismatches")},{p:2,k:"rescue",title:root.t("صور الأقراص والإنقاذ","Disk images & rescue"),desc:root.t("فحص • نسخة موثقة • SHA-256","Inspect • verified copy • SHA-256")}];delegate:Button {required property var modelData;Layout.fillWidth:true;implicitHeight:96;onClicked:root.page=modelData.p;background:Rectangle {radius:9;color:parent.hovered?"#19344a":"#102131";border.color:"#314f65"}contentItem:RowLayout {spacing:12;AppIcon {name:modelData.k;Layout.preferredWidth:46;Layout.preferredHeight:46}ColumnLayout {Layout.fillWidth:true;Label {text:modelData.title;font.bold:true;color:"#e6f1fa";Layout.fillWidth:true;wrapMode:Text.WordWrap}Label {text:modelData.desc;color:"#8dadc5";font.pixelSize:11;Layout.fillWidth:true;wrapMode:Text.WordWrap}}}}}
      }
+     SmartWorkspace {app:root;visible:root.page===1;Layout.fillWidth:true}
      RowLayout {visible:root.page===2;Layout.fillWidth:true
       ActionButton {text:root.t("استعادة وفحص صورة","Recover & inspect image");primary:!root.diskRescueWorkspace;onClicked:root.diskRescueWorkspace=false}
       ActionButton {text:root.t("إنقاذ قرص وإعادة المحاولة","Image disk & retry");primary:root.diskRescueWorkspace;onClicked:root.diskRescueWorkspace=true}
@@ -166,10 +169,12 @@ ApplicationWindow {
       }
      }
      RowLayout {visible:root.page===8;Layout.fillWidth:true
-      ActionButton {text:root.t("تجهيز فلاشة تثبيت","Create installation media");primary:!root.bootRepairMode;onClicked:root.bootRepairMode=false}
-      ActionButton {text:root.t("إصلاح الإقلاع","Repair boot");primary:root.bootRepairMode;onClicked:root.bootRepairMode=true}
+      ActionButton {text:root.t("تجهيز فلاشة تثبيت","Create installation media");primary:!root.bootRepairMode&&!root.windowsRecoveryMode;onClicked:{root.bootRepairMode=false;root.windowsRecoveryMode=false}}
+      ActionButton {visible:backend.windows;text:root.t("حلول تعطل Windows","Windows recovery");primary:root.windowsRecoveryMode;onClicked:{root.windowsRecoveryMode=true;root.bootRepairMode=false}}
+      ActionButton {text:root.t("إصلاح الإقلاع","Repair boot");primary:root.bootRepairMode;onClicked:{root.bootRepairMode=true;root.windowsRecoveryMode=false}}
      }
-     StorageWorkspace {app:root;visible:root.page===3||root.page===4||root.page===7||(root.page===8&&!root.bootRepairMode);bootMode:root.page===8;Layout.fillWidth:true}
+     WindowsRecoveryWorkspace {app:root;visible:root.page===8&&root.windowsRecoveryMode;Layout.fillWidth:true}
+     StorageWorkspace {app:root;visible:root.page===3||root.page===4||root.page===7||(root.page===8&&!root.bootRepairMode&&!root.windowsRecoveryMode);bootMode:root.page===8;Layout.fillWidth:true}
      BootRepairWorkspace {app:root;visible:root.page===8&&root.bootRepairMode;Layout.fillWidth:true}
      Panel {visible:root.page===3;Layout.fillWidth:true
       ColumnLayout {anchors.fill:parent;spacing:10;Label {text:root.t("Firmware ومعالجة التلف المادي","Firmware and physical damage");font.bold:true;font.pixelSize:18;color:"#e6c382"}Label {text:root.t("نسخة Firmware تظهر في نتيجة SMART عند دعم الجهاز. تحديثه يحتاج حزمة متوافقة مع الموديل من الشركة المصنّعة؛ لا يوجد تحديث عام لكل الأقراص. إصلاح نظام الملفات لا يعالج تلف السطح المادي.","Firmware version is shown in SMART when supported. Updating requires a model-matched manufacturer package; no universal drive update exists. Filesystem repair does not repair physical surface damage.");color:"#b6cbdb";Layout.fillWidth:true;wrapMode:Text.WordWrap}ActionButton {text:root.t("قراءة بيانات الجهاز","Read drive details");enabled:!backend.busy&&!!root.selectedDisk.device;onClicked:backend.inspectHealth(root.selectedDisk.device)}}

@@ -28,7 +28,7 @@ jobs:
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
-          name: OpenSuperClone-qualification-0.7.0
+          name: OpenSuperClone-qualification-0.8.0
           path: |
             out/osc-qualification/qualification.json
             out/osc-qualification/help.txt
@@ -72,6 +72,10 @@ jobs:
           QT_QUICK_BACKEND: software
         run: |
           mkdir -p out/ui
+          build/nexvary_dc --page 1 --smart-proof --screenshot out/ui/smart-ar.png
+          build/nexvary_dc --page 1 --smart-proof --english --screenshot out/ui/smart-en.png
+          build/nexvary_dc --page 8 --windows-recovery --screenshot out/ui/windows-recovery-ar.png
+          build/nexvary_dc --page 8 --windows-recovery --english --screenshot out/ui/windows-recovery-en.png
           build/nexvary_dc --page 2 --selective-retry --screenshot out/ui/selective-ar.png
           build/nexvary_dc --page 2 --selective-retry --english --screenshot out/ui/selective-en.png
           build/nexvary_dc --page 2 --screenshot out/ui/recovery-ar.png
@@ -84,7 +88,7 @@ jobs:
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
-          name: NEXVARY-DC-UI-0.7.0
+          name: NEXVARY-DC-UI-0.8.0
           path: out/ui/
           if-no-files-found: error
       - name: Capture Windows boot repair UI
@@ -109,13 +113,23 @@ jobs:
             if(!$p.WaitForExit(45000)) {$p.Kill();throw 'Selective retry UI screenshot timeout'}
             if($p.ExitCode -ne 0) {throw 'Selective retry UI screenshot failed'}
           }
+          foreach($language in @('ar','en')) {
+            foreach($view in @('smart','windows-recovery')) {
+              $arguments=@('--font-proof','--compact','--screenshot',"out/ui-windows/$view-$language.png")
+              if($view -eq 'smart') {$arguments+=@('--page','1','--smart-proof')} else {$arguments+=@('--page','8','--windows-recovery')}
+              if($language -eq 'en') {$arguments+='--english'}
+              $p=Start-Process build/Release/nexvary_dc.exe -ArgumentList $arguments -PassThru
+              if(!$p.WaitForExit(45000)) {$p.Kill();throw 'New UI screenshot timeout'}
+              if($p.ExitCode -ne 0) {throw 'New UI screenshot failed'}
+            }
+          }
           python -c "import base64,pathlib; print('DC_WINDOWS_SELECTIVE_PNG='+base64.b64encode(pathlib.Path('out/ui-windows/selective-ar.png').read_bytes()).decode())"
           python -c "import base64,pathlib; print('DC_WINDOWS_REPAIR_PNG='+base64.b64encode(pathlib.Path('out/ui-windows/repair-ar.png').read_bytes()).decode())"
       - name: Upload Windows repair UI
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: NEXVARY-DC-Windows-Repair-UI-0.7.0
+          name: NEXVARY-DC-Windows-Repair-UI-0.8.0
           path: out/ui-windows/
           if-no-files-found: error
       - name: Deploy Windows
@@ -147,6 +161,17 @@ jobs:
             $env:QT_PLUGIN_PATH = $savedPlugins
             $env:QML2_IMPORT_PATH = $savedImports
           }
+      - name: Verify complete CrystalDiskInfo package and panel
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./tests/test_crystal_engine.ps1
+      - name: Retain CrystalDiskInfo software proof
+        if: runner.os == 'Windows' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CrystalDiskInfo-software-proof-0.8.0
+          path: out/crystal-proof/
+          if-no-files-found: warn
       - name: Build installer
         if: runner.os == 'Windows'
         shell: pwsh
@@ -160,7 +185,7 @@ jobs:
         shell: pwsh
         run: |
           $destination = Join-Path $env:RUNNER_TEMP 'NEXVARY-DC-installed-test'
-          $setup = (Resolve-Path out/NEXVARY-DC-0.7.0-Setup.exe).Path
+          $setup = (Resolve-Path out/NEXVARY-DC-0.8.0-Setup.exe).Path
           $install = Start-Process $setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/NOICONS',"/DIR=$destination") -PassThru
           if (!$install.WaitForExit(60000)) { $install.Kill(); throw "Installer timeout" }
           if ($install.ExitCode -ne 0) { throw "Installation failed: $($install.ExitCode)" }
@@ -178,9 +203,9 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Compress-Archive -Path out/portable/* -DestinationPath out/NEXVARY-DC-0.7.0-Portable.zip
-          $files=@('out/NEXVARY-DC-0.7.0-Setup.exe','out/NEXVARY-DC-0.7.0-Portable.zip')
-          $manifest=@{version='0.7.0';commit=$env:GITHUB_SHA;run=$env:GITHUB_RUN_ID;files=@()}
+          Compress-Archive -Path out/portable/* -DestinationPath out/NEXVARY-DC-0.8.0-Portable.zip
+          $files=@('out/NEXVARY-DC-0.8.0-Setup.exe','out/NEXVARY-DC-0.8.0-Portable.zip')
+          $manifest=@{version='0.8.0';commit=$env:GITHUB_SHA;run=$env:GITHUB_RUN_ID;files=@()}
           foreach($path in $files){$item=Get-Item $path;$hash=(Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant();$manifest.files+=@{name=$item.Name;bytes=$item.Length;sha256=$hash}}
           $manifest | ConvertTo-Json -Depth 5 | Set-Content out/release-manifest.json -Encoding utf8
           $manifest.files | ForEach-Object {"$($_.sha256)  $($_.name)"} | Set-Content out/SHA256SUMS.txt -Encoding ascii
@@ -189,10 +214,10 @@ jobs:
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: NEXVARY-DC-Release-0.7.0
+          name: NEXVARY-DC-Release-0.8.0
           path: |
-            out/NEXVARY-DC-0.7.0-Setup.exe
-            out/NEXVARY-DC-0.7.0-Portable.zip
+            out/NEXVARY-DC-0.8.0-Setup.exe
+            out/NEXVARY-DC-0.8.0-Portable.zip
             out/release-manifest.json
             out/SHA256SUMS.txt
           if-no-files-found: error
@@ -200,18 +225,19 @@ jobs:
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: NEXVARY-DC-Installer-0.7.0
-          path: out/NEXVARY-DC-0.7.0-Setup.exe
+          name: NEXVARY-DC-Installer-0.8.0
+          path: out/NEXVARY-DC-0.8.0-Setup.exe
           if-no-files-found: error
       - name: Upload Windows artifacts
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: NEXVARY-DC-Portable-0.7.0
+          name: NEXVARY-DC-Portable-0.8.0
           path: out/portable/
           if-no-files-found: error
 
   firmware:
+    if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -228,6 +254,7 @@ jobs:
           path: out/firmware/
 
   linux-vm:
+    if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
@@ -251,7 +278,7 @@ jobs:
       - name: Upload direct engine and corresponding GPL sources
         uses: actions/upload-artifact@v4
         with:
-          name: NEXVARY-Direct-AHCI-0.7.0
+          name: NEXVARY-Direct-AHCI-0.8.0
           path: |
             scripts/direct_rescue.py
             scripts/relay_power.py
@@ -268,7 +295,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: NEXVARY-DC-VM-0.7.0
+          name: NEXVARY-DC-VM-0.8.0
           path: |
             out/vm/*.png
             out/vm/*.ppm
@@ -281,6 +308,7 @@ jobs:
           if-no-files-found: warn
 
   windows-vm:
+    if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 100
     strategy:
@@ -300,7 +328,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: NEXVARY-Windows-VM-${{ matrix.mode }}-0.7.0
+          name: NEXVARY-Windows-VM-${{ matrix.mode }}-0.8.0
           path: out/windows-vm-${{ matrix.mode }}/
           if-no-files-found: warn
 
@@ -314,18 +342,18 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: NEXVARY-DC-Release-0.7.0
+          name: NEXVARY-DC-Release-0.8.0
           path: release
       - uses: actions/download-artifact@v4
         with:
-          name: NEXVARY-Direct-AHCI-0.7.0
+          name: NEXVARY-Direct-AHCI-0.8.0
           path: direct-engine
       - uses: actions/download-artifact@v4
         with:
-          pattern: NEXVARY-Windows-VM-*-0.7.0
+          pattern: NEXVARY-Windows-VM-*-0.8.0
           path: windows-proof
       - name: Package qualified Linux helper and corresponding sources
-        run: tar -czf release/NEXVARY-DC-0.7.0-Linux-Direct-AHCI.tar.gz -C direct-engine .
+        run: tar -czf release/NEXVARY-DC-0.8.0-Linux-Direct-AHCI.tar.gz -C direct-engine .
       - name: Publish verified binaries
         env:
           GH_TOKEN: ${{ github.token }}
@@ -346,7 +374,7 @@ jobs:
           assert set(windows)=={'bios','uefi','secureboot'}
           data['verification']={'directAHCIVM':direct,'installedWindowsVM':windows,'dcWindowsUSBEndToEndTested':True,'firmwareRepairCertifiedFamilies':0}
 
-          p=pathlib.Path('release/NEXVARY-DC-0.7.0-Linux-Direct-AHCI.tar.gz')
+          p=pathlib.Path('release/NEXVARY-DC-0.8.0-Linux-Direct-AHCI.tar.gz')
           data['files'].append({'name':p.name,'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()})
           pathlib.Path('release/release-manifest.json').write_text(json.dumps(data,indent=2))
           pathlib.Path('release/SHA256SUMS.txt').write_text(''.join(row['sha256']+'  '+row['name']+'\n' for row in data['files']))
@@ -356,4 +384,4 @@ jobs:
               assert hashlib.sha256(p.read_bytes()).hexdigest()==row['sha256']
           PYVERIFY
           test "$(gh api repos/nexvary/NEXVARY-DC/git/ref/heads/main --jq .object.sha)" = "$GITHUB_SHA"
-          gh release create v0.7.0 release/* --target "$GITHUB_SHA" --title 'NEXVARY Disk Care 0.7.0' --notes-file docs/RELEASE-0.7.0.md
+          gh release create v0.8.0 release/* --target "$GITHUB_SHA" --title 'NEXVARY Disk Care 0.8.0' --notes-file docs/RELEASE-0.8.0.md
