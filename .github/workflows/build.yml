@@ -359,13 +359,15 @@ jobs:
           name: CrystalDiskInfo-software-proof-0.8.0
           path: crystal-proof
       - name: Package qualified Linux helper and corresponding sources
-        run: tar -czf release/NEXVARY-DC-0.8.0-Linux-Direct-AHCI.tar.gz -C direct-engine .
+        run: |
+          chmod 755 direct-engine/out/osc-direct/build/src/opensuperclone/opensuperclone
+          tar -czf release/NEXVARY-DC-0.8.0-Linux-Direct-AHCI.tar.gz -C direct-engine .
       - name: Publish verified binaries
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           python3 - <<'PYVERIFY'
-          import json, os, pathlib, hashlib
+          import json, os, pathlib, hashlib, tarfile
           data=json.loads(pathlib.Path('release/release-manifest.json').read_text(encoding='utf-8-sig'))
           assert data['commit']==os.environ['GITHUB_SHA']
           direct=json.loads(pathlib.Path('direct-engine/out/direct-vm/results.json').read_text())
@@ -383,6 +385,15 @@ jobs:
           data['verification']={'crystalDiskInfoSoftware':crystal,'nativeCTestLinux':23,'nativeCTestWindows':26,'directTransportTestsLinux':19,'directAHCIVM':direct,'installedWindowsVM':windows,'dcWindowsUSBEndToEndTested':True,'firmwareRepairCertifiedFamilies':0}
 
           p=pathlib.Path('release/NEXVARY-DC-0.8.0-Linux-Direct-AHCI.tar.gz')
+          with tarfile.open(p) as archive:
+              engine=archive.getmember('./out/osc-direct/build/src/opensuperclone/opensuperclone')
+              assert engine.isfile() and engine.mode & 0o100
+              qualification=json.load(archive.extractfile('./out/osc-direct/qualification.json'))
+              assert hashlib.sha256(archive.extractfile(engine).read()).hexdigest()==qualification['binarySHA256']
+              for name in ['LICENSE','adapter.patch','upstream-source.tar.gz']:
+                  assert archive.getmember('./out/osc-direct/'+name).isfile()
+              for name in ['direct_rescue.py','rescue_map.py','relay_power.py','qualify_opensuperclone.py','osc_adapter_patch.py']:
+                  assert archive.getmember('./scripts/'+name).isfile()
           data['files'].append({'name':p.name,'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()})
           pathlib.Path('release/release-manifest.json').write_text(json.dumps(data,indent=2))
           pathlib.Path('release/SHA256SUMS.txt').write_text(''.join(row['sha256']+'  '+row['name']+'\n' for row in data['files']))
