@@ -8,6 +8,8 @@
 #include "FilesystemRecovery.h"
 #include "Partitions.h"
 #include "RescueEngine.h"
+#include "ReadCoverage.h"
+#include "Recovery.h"
 namespace {
 void p16(QByteArray &b,int p,quint16 v){qToLittleEndian(v,reinterpret_cast<uchar*>(b.data()+p));}
 void p32(QByteArray &b,int p,quint32 v){qToLittleEndian(v,reinterpret_cast<uchar*>(b.data()+p));}
@@ -47,7 +49,47 @@ class AdvancedTests:public QObject {
  void write(const QString &p,const QByteArray &b){QFile f(p);QVERIFY(f.open(QIODevice::WriteOnly));QCOMPARE(f.write(b),qint64(b.size()));}
  QByteArray read(const QString &p){QFile f(p);if(!f.open(QIODevice::ReadOnly))return {};return f.readAll();}
  void compareFile(const QJsonObject &r,int i,const QByteArray &expected){auto entry=r.value("files").toArray()[i].toObject();auto b=read(QDir(r.value("destination").toString()).filePath(entry.value("file").toString()));QCOMPARE(b,expected);QCOMPARE(entry.value("sha256").toString(),QString::fromLatin1(QCryptographicHash::hash(expected,QCryptographicHash::Sha256).toHex()));QVERIFY(entry.value("readbackVerified").toBool());}
+ void map(const QString &image,const QByteArray &bytes,qint64 missingOffset,qint64 missingLength,bool direct=true,qint64 committed=-1){
+  if(committed<0)committed=bytes.size();
+  QJsonObject header{{"schema",1},{"destination",image}};
+  if(direct)header.insert("identity",QJsonObject{{"bytes",double(bytes.size())}});
+  else {header.insert("identity","fixture");header.insert("sourceBytes",QString::number(bytes.size()));header.insert("sectorBytes",512);}
+  QJsonArray bad;if(missingLength)bad.append(QJsonArray{double(missingOffset),double(missingLength)});
+  QJsonObject row{{"offset",0},{direct?"length":"bytes",double(committed)},{"bad",bad},{"sha256",QString::fromLatin1(QCryptographicHash::hash(bytes.left(committed),QCryptographicHash::Sha256).toHex())}};
+  if(direct)row.insert("phase","deferred");
+  write(image+(direct?".dc-ahci.jsonl":".readmap.jsonl"),QJsonDocument(header).toJson(QJsonDocument::Compact)+'\n'+QJsonDocument(row).toJson(QJsonDocument::Compact)+'\n');
+ }
 private slots:
+ void directMapTracksFragmentedNtfsHoles(){
+  QTemporaryDir d;auto b=ntImage();b.replace(80*512,512,QByteArray(512,0));auto image=d.filePath("n.img");write(image,b);map(image,b,80*512,512);
+  auto r=dc::recoverFilesystem(image,d.path(),"NTFS");QCOMPARE(r.value("recoveredCount").toInt(),2);compareFile(r,0,"resident recovered");compareFile(r,1,QByteArray(512,0)+QByteArray(688,'B'));
+  auto files=r.value("files").toArray();QCOMPARE(files[0].toObject().value("condition").toString(),"complete");QCOMPARE(files[1].toObject().value("condition").toString(),"partial");QCOMPARE(files[1].toObject().value("sourceMissingBytes").toInt(),512);QCOMPARE(r.value("partialCount").toInt(),1);QCOMPARE(read(image),b);
+ }
+ void nativeMapTracksFragmentedExfatHoles(){
+  QTemporaryDir d;auto b=exImage();b.replace(30*512,512,QByteArray(512,0));auto image=d.filePath("e.img");write(image,b);map(image,b,30*512,512,false);
+  auto r=dc::recoverFilesystem(image,d.path(),"exFAT");QCOMPARE(r.value("recoveredCount").toInt(),2);compareFile(r,0,QByteArray(600,'C'));compareFile(r,1,QByteArray(512,0)+QByteArray(188,'E'));QCOMPARE(r.value("files").toArray()[1].toObject().value("sourceMissingBytes").toInt(),512);QCOMPARE(r.value("partialCount").toInt(),1);
+ }
+ void mapRejectsChangedImageBeforeCreatingOutput(){
+  QTemporaryDir d;auto image=d.filePath("n.img");auto b=ntImage();write(image,b);map(image,b,0,0);b[80*512]='X';write(image,b);
+  auto before=QDir(d.path()).entryList(QDir::Dirs|QDir::NoDotAndDotDot);auto r=dc::recoverFilesystem(image,d.path(),"NTFS");QCOMPARE(r.value("status").toString(),"error");QVERIFY(r.value("message").toString().contains("SHA-256"));QCOMPARE(QDir(d.path()).entryList(QDir::Dirs|QDir::NoDotAndDotDot),before);QCOMPARE(read(image),b);
+  auto carved=dc::recoverImage(image,d.path());QCOMPARE(carved.value("status").toString(),"error");QCOMPARE(QDir(d.path()).entryList(QDir::Dirs|QDir::NoDotAndDotDot),before);
+ }
+ void mapMissingMetadataIsNeverAllocationEvidence(){
+  QTemporaryDir d;auto b=ntImage();auto offset=2048+18*1024;b.replace(offset,512,QByteArray(512,0));auto image=d.filePath("n.img");write(image,b);map(image,b,offset,512);
+  auto r=dc::recoverFilesystem(image,d.path(),"NTFS");QCOMPARE(r.value("recoveredCount").toInt(),1);compareFile(r,0,"resident recovered");QVERIFY(r.value("skippedEntries").toInt()>0);
+ }
+ void mapBoundsAmbiguityTornTailAndCancellation(){
+  QTemporaryDir d;auto b=ntImage();auto image=d.filePath("n.img");write(image,b);map(image,b,0,0,true,4096);QFile f(image);QVERIFY(f.open(QIODevice::ReadOnly));dc::ReadCoverage coverage;QStringList warnings;
+  QCOMPARE(coverage.load(f,{},warnings),QString());QCOMPARE(coverage.missing(0,4096),qint64(0));QCOMPARE(coverage.missing(4000,200),qint64(104));QCOMPARE(coverage.missing(90*512,688),qint64(688));
+  QFile tail(image+".dc-ahci.jsonl");QVERIFY(tail.open(QIODevice::Append));tail.write("{torn");tail.close();warnings.clear();QCOMPARE(coverage.load(f,{},warnings),QString());QVERIFY(warnings.join(' ').contains("Torn"));
+  std::atomic_bool stop=true;QVERIFY(coverage.load(f,{&stop,{}},warnings).contains("cancelled"));
+  map(image,b,0,0,false);QVERIFY(coverage.load(f,{},warnings).contains("Multiple"));QVERIFY(QFile::remove(image+".readmap.jsonl"));
+  auto bytes=read(image+".dc-ahci.jsonl");auto lines=bytes.split('\n');auto row=QJsonDocument::fromJson(lines[1]).object();row.insert("length",double(b.size()+512));write(image+".dc-ahci.jsonl",lines[0]+'\n'+QJsonDocument(row).toJson(QJsonDocument::Compact)+'\n');QVERIFY(coverage.load(f,{},warnings).contains("bounds"));
+ }
+ void carvedJpegWithMissingBytesIsPartial(){
+  QTemporaryDir d;QByteArray b(2048,0);b.replace(0,3,QByteArray::fromHex("ffd8ff"));b.replace(1100,2,QByteArray::fromHex("ffd9"));auto image=d.filePath("j.img");write(image,b);map(image,b,512,512);
+  auto r=dc::recoverImage(image,d.path());QCOMPARE(r.value("recoveredCount").toInt(),1);auto entry=r.value("files").toArray()[0].toObject();QCOMPARE(entry.value("condition").toString(),"partial");QCOMPARE(entry.value("sourceMissingBytes").toInt(),512);compareFile(r,0,b.left(1102));
+ }
  void ntfsAttributeListFragmentsAndStaleReference(){QTemporaryDir d;auto b=ntImage();QByteArray list(64,0);
   for(int p:QList<int>{0,32}){p32(list,p,0x80);p16(list,p+4,32);p64(list,p+16,quint64(p?19:18)|(quint64(1)<<48));p16(list,p+24,p?9:8);}p64(list,40,1);
   auto base=nonresident(QByteArray::fromHex("11015000"),1200,1);p16(base,14,8);auto extra=nonresident(QByteArray::fromHex("11025a00"),0,2);p16(extra,14,9);p64(extra,16,1);p64(extra,24,2);

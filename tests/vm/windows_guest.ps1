@@ -77,9 +77,19 @@ try {
  # actually boots. EFI loaders and executable Windows PE components stay intact.
  $mount='C:\dc-pe-mount'
  New-Item -ItemType Directory $mount | Out-Null
- $wim=Join-Path $root 'sources\boot.wim'
- & dism.exe /Mount-Image /ImageFile:$wim /Index:2 /MountDir:$mount | Out-Null
- if($LASTEXITCODE -ne 0){throw 'WinPE proof hook mount failed'}
+ $usbWim=Join-Path $root 'sources\boot.wim'
+ # Service a writable NTFS copy: ISO files retain read-only attributes and
+ # DISM read/write mounts must not depend on the target FAT/removable volume.
+ $wim='C:\dc-usb-boot.wim'
+ Copy-Item -LiteralPath $usbWim -Destination $wim
+ (Get-Item -LiteralPath $wim).IsReadOnly=$false
+ $dismOutput=& dism.exe /Mount-Image /ImageFile:$wim /Index:2 /MountDir:$mount /LogPath:C:\dc-usb-dism.log 2>&1
+ $mountCode=$LASTEXITCODE
+ foreach($line in $dismOutput){Proof ('DC_DISM_MOUNT='+[string]$line)}
+ if($mountCode -ne 0){
+  foreach($line in (Get-Content C:\dc-usb-dism.log -Tail 30 -ErrorAction SilentlyContinue)){Proof ('DC_DISM_LOG='+$line)}
+  throw ('WinPE proof hook mount failed: '+$mountCode)
+ }
  try {
  @'
 @echo off
@@ -100,8 +110,13 @@ wpeutil shutdown
 [LaunchApps]
 %SYSTEMROOT%\System32\cmd.exe, /c X:\dc-pe-proof.cmd
 '@ | Set-Content (Join-Path $mount 'Windows\System32\winpeshl.ini') -Encoding ascii
- & dism.exe /Unmount-Image /MountDir:$mount /Commit | Out-Null
- if($LASTEXITCODE -ne 0){throw 'WinPE proof hook commit failed'}
+ $dismOutput=& dism.exe /Unmount-Image /MountDir:$mount /Commit /LogPath:C:\dc-usb-dism.log 2>&1
+ $commitCode=$LASTEXITCODE
+ foreach($line in $dismOutput){Proof ('DC_DISM_COMMIT='+[string]$line)}
+ if($commitCode -ne 0){throw ('WinPE proof hook commit failed: '+$commitCode)}
+ (Get-Item -LiteralPath $usbWim).IsReadOnly=$false
+ Copy-Item -LiteralPath $wim -Destination $usbWim -Force
+ if((Get-FileHash $wim -Algorithm SHA256).Hash -ne (Get-FileHash $usbWim -Algorithm SHA256).Hash){throw 'Test hook WIM copy readback mismatch'}
  }catch{
  & dism.exe /Unmount-Image /MountDir:$mount /Discard | Out-Null
  throw

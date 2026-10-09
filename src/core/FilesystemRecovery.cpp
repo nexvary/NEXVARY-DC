@@ -1,4 +1,5 @@
 #include "FilesystemRecovery.h"
+#include "ReadCoverage.h"
 #include "Partitions.h"
 #include <QFile>
 #include <QDateTime>
@@ -26,20 +27,21 @@ QString safe(QString s){for(auto &c:s)if(c.unicode()<32||QString("/\\:*?\"<>|").
 struct Run {qint64 offset,length;}; // offset -1 means logical zeros, never missing evidence.
 struct Stream {QList<Run> runs; QByteArray resident; qint64 size=0,initialized=0;bool valid=false;mutable QList<qint64> ends;};
 struct Image {
- QFile &f; ImageVolume v; qint64 cacheOffset=-1;QByteArray cache;
- QByteArray read(qint64 off,qint64 n){
+ QFile &f; ImageVolume v; const ReadCoverage *coverage=nullptr; qint64 cacheOffset=-1;QByteArray cache;
+ QByteArray read(qint64 off,qint64 n,bool allowMissing=false){
   if(off<0||n<0||off>v.length||n>v.length-off||n>32*1024*1024)return {};
+  if(!allowMissing&&coverage&&coverage->missing(v.offset+off,n)>0)return {};
   if(n<=4096){if(cacheOffset<0||off<cacheOffset||off+n>cacheOffset+cache.size()){cacheOffset=(off/65536)*65536;if(!f.seek(v.offset+cacheOffset))return {};cache=f.read(qMin<qint64>(65536,v.length-cacheOffset));}if(off+n<=cacheOffset+cache.size())return cache.mid(off-cacheOffset,n);}
   if(!f.seek(v.offset+off))return {};return f.read(n);
  }
- QByteArray read(const Stream &s,qint64 pos,qint64 n){
+ QByteArray read(const Stream &s,qint64 pos,qint64 n,bool allowMissing=false){
   if(!s.valid||pos<0||n<0||pos>s.size||n>s.size-pos||n>32*1024*1024)return {};
   if(!s.resident.isNull())return s.resident.mid(pos,n);
   QByteArray out;out.reserve(n);
   if(s.ends.size()!=s.runs.size()){s.ends.clear();qint64 end=0;for(const auto &r:s.runs){end+=r.length;s.ends.append(end);}}
   auto it=std::upper_bound(s.ends.cbegin(),s.ends.cend(),pos);qsizetype index=it-s.ends.cbegin();qint64 logical=index?s.ends[index-1]:0;
   for(;index<s.runs.size();++index){const auto &r=s.runs[index];auto within=pos-logical,take=qMin(n-qint64(out.size()),r.length-within);if(take<=0)break;
-   auto b=r.offset<0?QByteArray(take,0):read(r.offset+within,take);if(b.size()!=take)return {};out+=b;pos+=take;logical+=r.length;if(out.size()==n)break;}
+   auto b=r.offset<0?QByteArray(take,0):read(r.offset+within,take,allowMissing);if(b.size()!=take)return {};out+=b;pos+=take;logical+=r.length;if(out.size()==n)break;}
   return out;
  }
 };
@@ -54,9 +56,11 @@ struct Output {
   auto relative=folder+"/"+safe(name);auto path=QDir(root).filePath(relative);if(QFileInfo::exists(path)){relative=folder+"/"+QString::number(files.size()+1)+"_"+safe(name);path=QDir(root).filePath(relative);}
   if(!QDir().mkpath(QFileInfo(path).absolutePath())){status="error";issue(name,"Cannot create output directory");return;}
   QFile file(path);if(!file.open(QIODevice::WriteOnly|QIODevice::NewOnly)){status="error";issue(name,"Cannot create output file");return;}
-  QCryptographicHash hash(QCryptographicHash::Sha256);qint64 done=0;QString condition=candidate?"candidate":"complete";
+  qint64 missingBytes=0,logical=0;
+  if(im.coverage&&s.resident.isNull())for(const auto &run:s.runs){auto available=qMax<qint64>(0,qMin(run.length,s.initialized-logical));if(run.offset>=0&&available)missingBytes+=im.coverage->missing(im.v.offset+run.offset,available);logical+=run.length;}
+  QCryptographicHash hash(QCryptographicHash::Sha256);qint64 done=0;QString condition=missingBytes?"partial":candidate?"candidate":"complete";
   while(done<s.size){if(!running()){condition="partial";break;}const auto n=qMin<qint64>(1048576,s.size-done);
-   QByteArray b;if(done>=s.initialized)b=QByteArray(n,0);else {auto valid=qMin(n,s.initialized-done);b=im.read(s,done,valid);if(b.size()==valid)b+=QByteArray(n-valid,0);}
+   QByteArray b;if(done>=s.initialized)b=QByteArray(n,0);else {auto valid=qMin(n,s.initialized-done);b=im.read(s,done,valid,true);if(b.size()==valid)b+=QByteArray(n-valid,0);}
    if(b.size()!=n){condition="partial";issue(name,"Source read failed");break;}if(file.write(b)!=n){condition="partial";status="error";issue(name,"Destination write failed");break;}
    hash.addData(b);done+=n;ctx.update(done,s.size);
   }
@@ -64,7 +68,7 @@ struct Output {
   QFile check(path);QCryptographicHash verify(QCryptographicHash::Sha256);bool verified=check.open(QIODevice::ReadOnly)&&verify.addData(&check)&&check.size()==done&&verify.result()==hash.result();
   if(!verified){condition="partial";status="error";}
   if(done<s.size)condition="partial";
-  files.append(QJsonObject{{"file",relative},{"originalName",name},{"expectedBytes",double(s.size)},{"bytes",double(done)},{"sha256",QString::fromLatin1(hash.result().toHex())},{"readbackVerified",verified},{"condition",condition},{"contentIntegrity","unknown; compare with an original or inspect content"},{"evidence",evidence}});
+  files.append(QJsonObject{{"file",relative},{"originalName",name},{"expectedBytes",double(s.size)},{"bytes",double(done)},{"sha256",QString::fromLatin1(hash.result().toHex())},{"readbackVerified",verified},{"condition",condition},{"sourceMissingBytes",double(missingBytes)},{"readMap",im.coverage?im.coverage->path():QString()},{"contentIntegrity","unknown; compare with an original or inspect content"},{"evidence",evidence}});
  }
 };
 // NTFS USA fixups are mandatory before any attribute is interpreted.
@@ -272,16 +276,17 @@ QJsonObject recoverFilesystem(const QString &source,const QString &directory,con
  if(options.maxFiles<1||options.maxFiles>1000000||options.maxRecords<1||options.maxRecords>10000000)return error("Invalid recovery limits.");
  if(filesystem!="NTFS"&&filesystem!="exFAT"&&filesystem!="FAT32")return error("Unknown filesystem mode.");
  QFile f(source);if(!f.open(QIODevice::ReadOnly))return error("Cannot open image read-only.");auto size=f.size();auto modified=QFileInfo(source).lastModified();
+ QStringList warnings;ReadCoverage coverage;auto mapError=coverage.load(f,ctx,warnings);if(!mapError.isEmpty()){auto result=error(mapError);if(ctx.cancelled())result.insert("status","cancelled");return result;}
  QTemporaryDir directoryOut(QDir(directory).filePath("NEXVARY-Files-XXXXXX"));if(!directoryOut.isValid())return error("Cannot create output directory.");directoryOut.setAutoRemove(false);
- QStringList warnings;auto volumes=imageVolumes(f,warnings);QJsonArray files,issues;QString status="completed";int skipped=0,found=0;
- for(const auto &volume:volumes){Image im{f,volume};auto perVolume=options;perVolume.maxFiles=qMax(1,options.maxFiles-int(files.size()));Output output{im,directoryOut.path(),ctx,perVolume};bool matched=filesystem=="NTFS"?ntfs(im,output):filesystem=="exFAT"?exfat(im,output):fat32(im,output);if(matched)++found;
+ auto volumes=imageVolumes(f,warnings);QJsonArray files,issues;QString status="completed";int skipped=0,found=0;
+ for(const auto &volume:volumes){Image im{f,volume,&coverage};auto perVolume=options;perVolume.maxFiles=qMax(1,options.maxFiles-int(files.size()));Output output{im,directoryOut.path(),ctx,perVolume};bool matched=filesystem=="NTFS"?ntfs(im,output):filesystem=="exFAT"?exfat(im,output):fat32(im,output);if(matched)++found;
   for(auto value:output.files)files.append(value);for(auto value:output.issues)if(issues.size()<2000)issues.append(value);skipped+=output.skipped;
   if(output.status!="completed"){status=output.status;break;}if(files.size()>=options.maxFiles){status="partial";warnings<<"Configured file limit reached";break;}
  }
  if(!found)status="error";if(ctx.cancelled())status="cancelled";if(f.size()!=size||QFileInfo(source).lastModified()!=modified){status="error";warnings<<"Source changed while recovering";}
  if(status=="completed"&&skipped)status="partial";
  QJsonObject result{{"status",status},{"operation","filesystem_recovery"},{"filesystem",filesystem},{"destination",directoryOut.path()},{"source",QFileInfo(source).absoluteFilePath()},{"recoveredCount",files.size()},{"files",files},{"skippedEntries",skipped},{"issues",issues},{"warnings",QJsonArray::fromStringList(warnings)},{"matchedVolumes",found},{"scope","Read-only deleted-file recovery. complete means metadata byte coverage, not original-content authenticity. Overwritten/TRIM data cannot be recreated. Compressed/encrypted NTFS and external MFT attribute-list extensions are reported, not guessed."}};
- int completeCount=0,partialCount=0,candidateCount=0;for(const auto &value:files){auto condition=value.toObject().value("condition").toString();if(condition=="complete")++completeCount;else if(condition=="partial")++partialCount;else ++candidateCount;}result.insert("completeCount",completeCount);result.insert("partialCount",partialCount);result.insert("candidateCount",candidateCount);
+ int completeCount=0,partialCount=0,candidateCount=0;for(const auto &value:files){auto condition=value.toObject().value("condition").toString();if(condition=="complete")++completeCount;else if(condition=="partial")++partialCount;else ++candidateCount;}result.insert("completeCount",completeCount);result.insert("partialCount",partialCount);result.insert("candidateCount",candidateCount);if(partialCount&&status=="completed")result.insert("status","partial");
  QSaveFile manifest(directoryOut.filePath("manifest.json"));auto json=QJsonDocument(result).toJson();if(!manifest.open(QIODevice::WriteOnly)||manifest.write(json)!=json.size()||!manifest.commit())result.insert("manifestWarning","Cannot save manifest; export report.");return result;
 }
 }

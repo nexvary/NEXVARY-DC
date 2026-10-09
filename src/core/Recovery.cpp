@@ -1,4 +1,5 @@
 #include "Recovery.h"
+#include "ReadCoverage.h"
 #include <QFile>
 #include <QFileInfo>
 #include <QDir>
@@ -40,6 +41,8 @@ QJsonObject recoverImage(const QString &source,const QString &directory,const Co
  QFile input(source),reader(source);
  if(!input.open(QIODevice::ReadOnly) || !reader.open(QIODevice::ReadOnly) || input.size()<=0)return error("Cannot read source image.");
  const auto total=input.size();
+ QStringList warnings;ReadCoverage coverage;auto mapError=coverage.load(input,ctx,warnings);if(!mapError.isEmpty()){auto result=error(mapError);if(ctx.cancelled())result.insert("status","cancelled");return result;}
+ if(!input.seek(0))return error("Cannot rewind verified image.");
  QTemporaryDir output(QDir(canonical).filePath("NEXVARY-Recovered-XXXXXX"));
  if(!output.isValid())return error("Cannot create a recovery folder.");
  output.setAutoRemove(false);
@@ -66,7 +69,8 @@ QJsonObject recoverImage(const QString &source,const QString &directory,const Co
    bool matches=verify.open(QIODevice::ReadOnly)&&readback.addData(&verify)&&verify.size()==copied&&readback.result()==hash.result();
    if(!matches){status="error";message="Recovered file readback failed";}
    if(ctx.cancelled())status="cancelled";
-   files.append(QJsonObject{{"file",name},{"offset",double(offset)},{"bytes",double(copied)},{"expectedBytes",double(length)},{"sha256",QString::fromLatin1(hash.result().toHex())},{"readbackVerified",matches},{"condition",copied==length&&matches?"candidate":"partial"},{"validation",isPng?"PNG chunk CRC, decoder/content integrity unverified":"JPEG signature and end marker only"}});
+   const auto missing=coverage.missing(offset,length);
+   files.append(QJsonObject{{"sourceMissingBytes",double(missing)},{"readMap",coverage.path()},{"file",name},{"offset",double(offset)},{"bytes",double(copied)},{"expectedBytes",double(length)},{"sha256",QString::fromLatin1(hash.result().toHex())},{"readbackVerified",matches},{"condition",copied==length&&matches&&!missing?"candidate":"partial"},{"validation",isPng?"PNG chunk CRC, decoder/content integrity unverified":"JPEG signature and end marker only"}});
    skipUntil=offset+length;
    if(status!="completed")break;
    if(files.size()>=100000){status="partial";message="100000 carving result limit reached; metadata recovery has a configurable file limit.";break;}
@@ -76,8 +80,8 @@ QJsonObject recoverImage(const QString &source,const QString &directory,const Co
  }
  if(ctx.cancelled() && status=="completed")status="cancelled";
  if(input.size()!=total){status="error";message="Image size changed during recovery.";}
- QJsonObject result{{"status",status},{"operation","file_recovery"},{"source",QFileInfo(source).absoluteFilePath()},{"destination",output.path()},{"scannedBytes",double(scanned)},{"recoveredCount",files.size()},{"files",files},{"message",message},{"scope","PNG and JPEG streaming signature carving, bounded by source-image length. Includes live and deleted contiguous data. Original names, folders, fragmentation and overwritten/TRIM data are not restored. JPEG files require visual verification."}};
- int completeCount=0,partialCount=0,candidateCount=0;for(const auto &value:files){auto condition=value.toObject().value("condition").toString();if(condition=="complete")++completeCount;else if(condition=="partial")++partialCount;else ++candidateCount;}result.insert("completeCount",completeCount);result.insert("partialCount",partialCount);result.insert("candidateCount",candidateCount);
+ QJsonObject result{{"status",status},{"operation","file_recovery"},{"source",QFileInfo(source).absoluteFilePath()},{"destination",output.path()},{"scannedBytes",double(scanned)},{"recoveredCount",files.size()},{"files",files},{"message",message},{"warnings",QJsonArray::fromStringList(warnings)},{"scope","PNG and JPEG streaming signature carving, bounded by source-image length. Includes live and deleted contiguous data. Original names, folders, fragmentation and overwritten/TRIM data are not restored. JPEG files require visual verification."}};
+ int completeCount=0,partialCount=0,candidateCount=0;for(const auto &value:files){auto condition=value.toObject().value("condition").toString();if(condition=="complete")++completeCount;else if(condition=="partial")++partialCount;else ++candidateCount;}result.insert("completeCount",completeCount);result.insert("partialCount",partialCount);result.insert("candidateCount",candidateCount);if(partialCount&&status=="completed")result.insert("status","partial");
  QFile manifest(output.filePath("manifest.json"));const auto json=QJsonDocument(result).toJson();
  if(!manifest.open(QIODevice::WriteOnly|QIODevice::NewOnly) || manifest.write(json)!=json.size() || !manifest.flush())result.insert("manifestWarning","Manifest write failed; export the operation report.");
  return result;

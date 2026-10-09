@@ -54,3 +54,5 @@ OSCDriver virtual disk, Direct IDE and head analysis are not integrated in NEXVA
 Full native SMART tables, local samples/trends and bounded notification settings; raising alert thresholds does not hide 05/C5/C6 risk.
 Complete bundled CrystalDiskInfo 9.9.2 Windows engine, native report import and separately identified licensed original panel; AAM/APM, mail, resident monitoring and graphs depend on hardware/configuration.
 Guided 0xc0000001 recovery starts with data rescue and official Windows tools; it does not automatically rebuild BCD.
+
+Recovery validates adjacent rescue-map SHA-256, labels files crossing missing regions partial and refuses missing allocation metadata.
