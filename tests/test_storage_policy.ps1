@@ -26,6 +26,15 @@ MustReject {Get-EmptyDiskStyleAction $d $r 1 'GPT'}
 MustReject {Get-EmptyDiskStyleAction $d $r 0 'INVALID'}
 $d.IsSystem=$true;MustReject {Get-EmptyDiskStyleAction $d $r 0 'GPT'};$d.IsSystem=$false
 $r.serial='CHANGED';MustReject {Get-EmptyDiskStyleAction $d $r 0 'GPT'};$r.serial='42'
+$d.PartitionStyle='MBR';$d|Add-Member -NotePropertyName LogicalSectorSize -NotePropertyValue 512
+$implicit=[pscustomobject]@{Offset=0;Size=$d.Size;IsBoot=$false;IsSystem=$false}
+$sectors=[byte[]]::new(1024)
+Assert-ClearedSuperfloppy $d $r @($implicit) $sectors
+$sectors[446]=1;MustReject {Assert-ClearedSuperfloppy $d $r @($implicit) $sectors};$sectors[446]=0
+[Text.Encoding]::ASCII.GetBytes('NTFS    ').CopyTo($sectors,3);MustReject {Assert-ClearedSuperfloppy $d $r @($implicit) $sectors}
+$sectors=[byte[]]::new(1024);[Text.Encoding]::ASCII.GetBytes('EFI PART').CopyTo($sectors,512);MustReject {Assert-ClearedSuperfloppy $d $r @($implicit) $sectors}
+$sectors=[byte[]]::new(1024);$implicit.Offset=1MB;MustReject {Assert-ClearedSuperfloppy $d $r @($implicit) $sectors};$implicit.Offset=0
+$d.IsBoot=$true;MustReject {Assert-ClearedSuperfloppy $d $r @($implicit) $sectors};$d.IsBoot=$false
 # Parse the complete production script without touching any disk.
 $tokens=$null;$errors=$null
 $null=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot '../scripts/storage.ps1'),[ref]$tokens,[ref]$errors)

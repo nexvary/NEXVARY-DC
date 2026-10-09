@@ -23,3 +23,18 @@ function Get-EmptyDiskStyleAction($Disk, $Request, [int]$PartitionCount, [string
  if($current -eq $Style) { return 'keep' }
  return 'convert'
 }
+function Assert-ClearedSuperfloppy($Disk, $Request, $Partitions, [byte[]]$Sectors) {
+ Assert-ExternalDisk $Disk $Request
+ if([string]$Disk.PartitionStyle -ne 'MBR' -or @($Partitions).Count -ne 1) { throw 'Unexpected post-clear partition layout.' }
+ $part=@($Partitions)[0]
+ if([long]$part.Offset -ne 0 -or [long]$part.Size -ne [long]$Disk.Size -or $part.IsBoot -or $part.IsSystem) { throw 'Post-clear partition is not an implicit whole-device volume.' }
+ $sector=[int]$Disk.LogicalSectorSize
+ if($sector -lt 512 -or $sector -gt 65536 -or $Sectors.Length -ne 2*$sector) { throw 'Cannot verify cleared disk sectors.' }
+ # A removable disk can expose an implicit whole-device partition after clean.
+ # Only accept the cleared representation, never a real MBR/GPT or a VBR.
+ foreach($i in 446..509){if($Sectors[$i] -ne 0){throw 'MBR partition entries remain after clearing.'}}
+ foreach($range in @(@(3,8),@(54,8),@(82,8),@($sector,8))) {
+  $text=[Text.Encoding]::ASCII.GetString($Sectors,$range[0],$range[1])
+  if($text -match 'NTFS|EXFAT|FAT12|FAT16|FAT32|EFI PART'){throw 'Filesystem or GPT signature remains after clearing.'}
+ }
+}

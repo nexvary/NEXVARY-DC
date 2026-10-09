@@ -31,6 +31,31 @@ function Set-EmptyDiskLayout([string]$Style) {
  # removable media. Initialize-Disk is only valid for RAW disks.
  $fresh=Guard
  $parts=@(Get-Partition -DiskNumber $fresh.Number -ErrorAction SilentlyContinue)
+ if($parts.Count) {
+  $sector=[int]$fresh.LogicalSectorSize
+  if($sector -lt 512 -or $sector -gt 65536){throw 'Unsupported target logical sector size.'}
+  $stream=[IO.FileStream]::new("\\.\PHYSICALDRIVE$($fresh.Number)",[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite)
+  try {
+   $sectors=[byte[]]::new(2*$sector);$done=0
+   while($done -lt $sectors.Length){$n=$stream.Read($sectors,$done,$sectors.Length-$done);if(!$n){throw 'Short cleared-layout read'};$done+=$n}
+  }finally{$stream.Dispose()}
+  try { Assert-ClearedSuperfloppy $fresh $r $parts $sectors }
+  catch {throw ($_.Exception.Message+' Observed: '+(@{style=[string]$fresh.PartitionStyle;parts=@($parts|Select-Object PartitionNumber,Offset,Size,Type)}|ConvertTo-Json -Compress -Depth 5))}
+  $null=Get-EmptyDiskStyleAction $fresh $r 0 $Style
+  $null=Guard
+  # Fixed, numeric-only script. Re-clean and convert the already authorized,
+  # sector-verified empty removable target; never run arbitrary user commands.
+  $script=Join-Path ([IO.Path]::GetTempPath()) ('dc-layout-'+[guid]::NewGuid()+'.txt')
+  try {
+   @("select disk $([int]$fresh.Number)",'clean',"convert $($Style.ToLowerInvariant())",'exit') | Set-Content -LiteralPath $script -Encoding ascii
+   & "$env:SystemRoot\System32\diskpart.exe" /s $script | Out-Null
+   if($LASTEXITCODE -ne 0){throw 'Cleared removable-disk conversion failed.'}
+  }finally{Remove-Item -LiteralPath $script -Force -ErrorAction SilentlyContinue}
+  Update-HostStorageCache
+  $verified=Guard
+  if([string]$verified.PartitionStyle -cne $Style){throw 'Removable partition-style readback failed.'}
+  return
+ }
  $action=Get-EmptyDiskStyleAction $fresh $r $parts.Count $Style
  $again=Guard
  if([string]$again.PartitionStyle -cne [string]$fresh.PartitionStyle) { throw 'Partition style changed before conversion.' }
