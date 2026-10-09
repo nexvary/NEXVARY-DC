@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<unattend xmlns="urn:schemas-microsoft-com:unattend">
+ <settings pass="specialize"><component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS"><ComputerName>DC-VM</ComputerName><TimeZone>UTC</TimeZone></component></settings>
+ <settings pass="oobeSystem"><component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS"><InputLocale>0409:00000409</InputLocale><SystemLocale>en-US</SystemLocale><UILanguage>en-US</UILanguage><UserLocale>en-US</UserLocale></component>
+ <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+ <OOBE><HideEULAPage>true</HideEULAPage><HideOnlineAccountScreens>true</HideOnlineAccountScreens><HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE><ProtectYourPC>3</ProtectYourPC><SkipMachineOOBE>true</SkipMachineOOBE><SkipUserOOBE>true</SkipUserOOBE></OOBE>
+ <UserAccounts><LocalAccounts><LocalAccount xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" wcm:action="add"><Name>DCTest</Name><Group>Administrators</Group><Password><Value>DC_Disposable_VM_123!</Value><PlainText>true</PlainText></Password></LocalAccount></LocalAccounts></UserAccounts>
+ <AutoLogon><Enabled>true</Enabled><Username>DCTest</Username><LogonCount>1</LogonCount><Password><Value>DC_Disposable_VM_123!</Value><PlainText>true</PlainText></Password></AutoLogon>
+ <FirstLogonCommands><SynchronousCommand xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" wcm:action="add"><Order>1</Order><CommandLine>cmd.exe /c C:\dc-proof.cmd</CommandLine><Description>Installed Windows VM proof</Description></SynchronousCommand></FirstLogonCommands>
+ </component></settings>
+</unattend>

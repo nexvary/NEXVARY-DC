@@ -20,12 +20,15 @@ try {
  $secure=(Get-ItemProperty HKLM:\SYSTEM\CurrentControlSet\Control\SecureBoot\State -ErrorAction SilentlyContinue).UEFISecureBootEnabled
  Proof $(if($secure -eq 1){'DC_SECURE_BOOT_ON'}else{'DC_SECURE_BOOT_OFF'})
  $mode=(Get-Content C:\dc-mode.txt -Raw).Trim()
+ Proof 'DC_DISK_ENUMERATION_BEGIN'
  $disks=@(Get-Disk)
+ Proof ('DC_DISK_ENUMERATION='+($disks | Select-Object Number,BusType,Size,PartitionStyle,UniqueId,SerialNumber,IsBoot,IsSystem | ConvertTo-Json -Compress))
  $system=@($disks | Where-Object {$_.IsBoot -or $_.IsSystem})[0]
  $usb=@($disks | Where-Object {[string]$_.BusType -eq 'USB' -and [long]$_.Size -eq 16GB})
  $small=@($disks | Where-Object {[string]$_.BusType -eq 'USB' -and [long]$_.Size -eq 1GB})
  if($usb.Count -ne 1 -or $small.Count -ne 1){throw 'Expected two isolated emulated USB targets'}
  $action=if($mode -eq 'bios'){'windows_bios_usb'}else{'windows_usb'}
+ Proof 'DC_SYSTEM_GUARD_BEGIN'
  $guard=Storage (Request $system 'layout')
  if($guard.code -eq 0 -or $guard.row.status -ne 'error'){throw 'Production system-disk guard did not reject'}
  Proof 'DC_SYSTEM_DISK_REFUSED'
@@ -39,6 +42,7 @@ try {
  if($guard.code -eq 0 -or $guard.row.status -ne 'error' -or $guard.row.message -notmatch 'space'){throw 'Insufficient destination space was not rejected'}
  if([string](Get-Disk -Number $small[0].Number).PartitionStyle -ne 'RAW'){throw 'Space rejection modified target'}
  Proof 'DC_USB_SPACE_REFUSED'
+ Proof 'DC_USB_PREPARATION_BEGIN'
  $prepared=Storage (Request $usb[0] $action)
  if($prepared.code -ne 0 -or $prepared.row.status -ne 'completed' -or $prepared.row.verifiedBytes -le 0){throw ('Production USB preparation failed: '+($prepared | ConvertTo-Json -Depth 10))}
  Proof ('DC_USB_PREPARED='+($prepared.row | ConvertTo-Json -Compress -Depth 10))

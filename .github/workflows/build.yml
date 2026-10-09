@@ -9,24 +9,6 @@ concurrency:
 permissions:
   contents: read
 jobs:
-  cancel-stale:
-    if: github.event_name == 'push'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 2
-    permissions:
-      actions: write
-    steps:
-      - uses: actions/github-script@v7
-        with:
-          script: |
-            const branch = context.ref.replace('refs/heads/', '');
-            const current = Number(process.env.GITHUB_RUN_ID);
-            const runs = await github.rest.actions.listWorkflowRunsForRepo({ ...context.repo, branch, per_page: 30 });
-            for (const run of runs.data.workflow_runs) {
-              if (run.id < current && run.name === 'Build and verify' && run.status !== 'completed') {
-                await github.rest.actions.cancelWorkflowRun({ ...context.repo, run_id: run.id });
-              }
-            }
   verify:
     strategy:
       fail-fast: false
@@ -298,8 +280,7 @@ jobs:
           if-no-files-found: warn
 
   windows-vm:
-    needs: firmware
-    runs-on: windows-2022
+    runs-on: ubuntu-24.04
     timeout-minutes: 100
     strategy:
       fail-fast: false
@@ -307,24 +288,13 @@ jobs:
         mode: [bios, uefi, secureboot]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: OVMF-test-firmware
-          path: out/firmware
-      - name: Install QEMU
-        shell: pwsh
-        run: choco install qemu -y --no-progress
-      - name: Boot installed evaluation Windows and inspect guest Secure Boot
-        shell: pwsh
-        run: ./tests/vm/windows_boot.ps1 -Mode ${{ matrix.mode }}
-      - name: Collect failed VM preparation diagnostics
-        if: always()
-        shell: pwsh
+      - name: Install hardware-accelerated Windows VM test tools
         run: |
-          $mode='${{ matrix.mode }}'
-          $source=Join-Path $env:RUNNER_TEMP ('dc-windows-'+$mode)
-          New-Item -ItemType Directory -Force "out/windows-vm-$mode" | Out-Null
-          if(Test-Path $source){Copy-Item "$source/*.log","$source/*.txt","$source/*.json","$source/*.ppm" "out/windows-vm-$mode" -ErrorAction SilentlyContinue}
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 ovmf xorriso wimtools
+          test -c /dev/kvm
+      - name: Boot Windows and production USB with guest Secure Boot proof
+        run: sudo --preserve-env=GITHUB_ACTIONS,RUNNER_TEMP python3 tests/vm/windows_kvm.py --mode ${{ matrix.mode }}
       - name: Retain Windows VM proof without Microsoft images
         if: always()
         uses: actions/upload-artifact@v4
