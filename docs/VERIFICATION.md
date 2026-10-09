@@ -1,6 +1,6 @@
-# Verification — 0.7.0
+# Verification — 0.8.0
 
-Historical 0.6.0 observations below are retained; the 0.7.0 qualification section supersedes their Windows boot limitation.
+Historical observations below are retained and explicitly distinguished from the current release gates. Successful publication of 0.8.0 requires every gate described here on the delivered commit.
 
 Release publication is gated on Windows 2022 and Ubuntu 24.04 builds/tests for the **same commit**. `release-manifest.json` records its SHA and Actions run. A local source tree or a successful compile alone is not release evidence.
 
@@ -20,7 +20,7 @@ Release publication is gated on Windows 2022 and Ubuntu 24.04 builds/tests for t
 
 These deterministic fixtures exercise image data and injected read failures. They do not emulate every filesystem implementation, controller, filesystem race or physical failure. Parser fuzzing, exhaustive filesystem coverage and hardware certification are not claimed.
 
-## Boot verification boundary
+## Historical 0.4.0 boot verification boundary
 Windows BIOS/UEFI preparation is implemented. WIM parts are staged before erasure and hash-verified after copying. Hybrid Linux writes have byte-for-byte readback. No bootable Windows ISO is supplied to this session; no full Windows installer boot in a VM is attested. GitHub Actions additionally boots the official Alpine virt 3.22.1 hybrid ISO as a virtual hard disk under QEMU TCG with SeaBIOS and OVMF UEFI, requiring an identifiable Alpine login screen (OCR plus retained screenshots). Both modes reached login in run 37783893889. This validates that reference image in those virtual firmware modes; it is not an end-to-end Windows USB creation or Secure Boot test. Secure Boot is unverified for all modes. This is a software-validation limitation, not a hardware test silently passed to the user.
 
 ## Remaining implementation limits
@@ -58,10 +58,21 @@ Windows visual proof uses the native Windows platform, not the font-less offscre
 
 ## 0.7.0 direct AHCI qualification
 
-Nine additional deterministic Python tests cover streaming SHA-256, cancellation/resume, crash tails, bad-sector fallback/retry budget, corruption, changed identities, image bounds, insufficient space, OS-visible controller refusal and USBRelay transfer errors/restoration. A separate QEMU AHCI test performs actual MMIO/DMA reads through the restricted engine and checks SHA-256 and resumed output. Source is attached read-only on the host. Physical SATA timing, DMA compatibility and electrical relay operation remain hardware tests. No firmware repair family is certified; release qualification requires installed Windows evaluation boot in BIOS, UEFI and UEFI Secure Boot with state confirmation inside the guest. The end-to-end production Windows USB qualification below is a separate required release gate; a successful AHCI test alone does not satisfy it.
+Nineteen deterministic Python tests cover streaming SHA-256, cancellation/resume, crash tails, bad-sector fallback/retry budget, corruption, changed identities, image bounds, insufficient space, OS-visible controller refusal and USBRelay transfer errors/restoration. A separate QEMU AHCI test performs actual MMIO/DMA reads through the restricted engine and checks SHA-256 and resumed output. Source is attached read-only on the host. Physical SATA timing, DMA compatibility and electrical relay operation remain hardware tests. No firmware repair family is certified; release qualification requires installed Windows evaluation boot in BIOS, UEFI and UEFI Secure Boot with state confirmation inside the guest. The end-to-end production Windows USB qualification below is a separate required release gate; a successful AHCI test alone does not satisfy it.
 
 ## 0.7.0 Windows production USB qualification
 
 Release publication additionally requires BIOS, UEFI and UEFI Secure Boot guests using one pinned official Windows 11 LTSC evaluation ISO. Each reaches installed Windows first logon, runs the production storage backend on an isolated emulated USB, rejects the system disk, stale serial and a 1 GiB target before mutation, verifies copied bytes, then boots the prepared USB to Windows PE. A test-only batch-shell hook in boot.wim reports kernel/firmware state on a separate disposable FAT USB; signed EFI executables remain unchanged. All mode results must report success in the release manifest. Fixture presence alone is not proof of a successful run. This does not certify all Windows ISOs, physical firmware or Secure Boot key/revocation databases.
 
 Windows qualification runs under KVM on an ephemeral Linux CI host. A test-only batch hook in the evaluation ISO boot.wim deploys the guest using Windows PE DISM/BCDBoot. The original pinned ISO is copied unchanged into the installed guest for the production USB tests. No Microsoft ISO, WIM or installed disk is published; only serial/guest text logs, screenshots and result JSON are retained. The former Windows-host TCG fixture is retained as a diagnostic alternative; its timeout is not successful qualification.
+
+## 0.8.0 health and rescue provenance gates
+
+- Full native ATA/NVMe SMART parsing, numeric/raw hexadecimal boundaries, nonzero pending/reallocated/uncorrectable caution, unknown/failed reads, serial change and bounded preferences.
+- Original pinned CrystalDiskInfo 9.9.2 package/source hashes, all engine members, Authenticode publisher and native fresh report import. The original advanced panel must produce a visible Windows window and close normally with automatic saved AAM/APM disabled. No physical-disk controls, SMTP sending or every vendor bridge is certified by these software tests.
+- SMART and 0xc0000001 guidance screens in Arabic/English. Synthetic SMART screenshots are labelled fixtures, not hardware measurements.
+- Deleted fragmented NTFS/exFAT files with zero-filled source holes recorded in validated direct/native rescue maps: retained later fragments, partial classification, missing-byte count and output SHA-256/readback.
+- Missing MFT metadata refusal, changed image/map SHA-256 rejection before output creation, map image bounds, conflicting maps, torn tail and cancellation; signature-carved JPEG crossing known missing bytes is partial.
+- Native CTest targets: 23 Linux / 26 Windows, with multiple cases inside each target; 19 direct Python cases (Windows skips Linux sysfs and GNU parser), 6 boot-safety cases.
+
+The release manifest embeds exact Windows/direct VM and Crystal engine proof. Physical tests are separate. This document lists gates and cannot substitute for their actual Actions conclusions.

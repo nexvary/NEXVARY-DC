@@ -76,3 +76,5 @@ Separate Linux expert helper: restricted OpenSuperClone process, exact PCI/port 
 ## SMART and Windows recovery guidance (0.8.0)
 
 Full native SMART tables, recorded trends and bounded alerts; nonzero 05/C5/C6 warns even when overall SMART passes. Windows includes complete pinned CrystalDiskInfo 9.9.2 Standard Edition with native report import and its separately identified original licensed advanced panel. [Arabic details and limits](docs/SMART-CRYSTAL-AR.md). The 0xc0000001 workspace is data-first diagnostic guidance, not automatic BCD reconstruction. Release gates and limitations: [0.8.0 notes](docs/RELEASE-0.8.0.md).
+
+[تقرير التسليم والقيود بالعربية](docs/REPORT-0.8.0-AR.md).
