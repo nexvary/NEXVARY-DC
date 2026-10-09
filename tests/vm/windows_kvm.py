@@ -151,7 +151,7 @@ def main():
     try:
         if shutil.disk_usage(work).free < 35*1024**3: raise OSError('At least 35 GiB of ephemeral disk free space required')
         iso = work/'evaluation.iso'
-        command(['curl','--fail','--location','--retry','3','--output',str(iso),URL])
+        command(['curl','--fail','--location','--retry','5','--retry-all-errors','--retry-max-time','600','--output',str(iso),URL])
         if sha(iso) != SHA: raise ValueError('Evaluation fixture hash mismatch')
         payload = work/'payload'; payload.mkdir()
         os.link(iso, payload/'source.iso')
@@ -161,17 +161,19 @@ def main():
         shutil.copyfile('tests/vm/windows_unattend.xml', payload/'unattend.xml')
         text(payload/'dc-proof.cmd', '@echo off\nmode COM1: baud=115200 parity=n data=8 stop=1\npowershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\\dc-guest.ps1\n')
         payload_iso = work/'payload.iso'
-        command(['xorriso','-as','mkisofs','-iso-level','3','-J','-R','-o',str(payload_iso),str(payload)])
+        command(['genisoimage','-udf','-allow-limited-size','-iso-level','3','-J','-R','-o',str(payload_iso),str(payload)])
         iso_tree = work/'iso'; iso_tree.mkdir()
-        command(['xorriso','-osirrox','on','-indev',str(iso),'-extract','/sources/boot.wim',str(iso_tree/'boot.wim')])
+        # Microsoft evaluation ISO stores files in UDF; its ISO9660 view is only a README.
+        command(['7z','x','-tudf','-y','-o'+str(iso_tree),str(iso)])
         hook = work/'hook'; hook.mkdir()
         diskpart, batch = deployment(mode)
         text(hook/'dc-diskpart.txt', diskpart); text(hook/'dc-deploy.cmd', batch)
         (hook/'Windows/System32').mkdir(parents=True)
         text(hook/'Windows/System32/winpeshl.ini', '[LaunchApps]\n%SYSTEMROOT%\\System32\\cmd.exe, /c X:\\dc-deploy.cmd\n')
-        command(['wimlib-imagex','update',str(iso_tree/'boot.wim'),'2','--check','--command',"add '"+str(hook)+"' '/'" ])
+        command(['wimlib-imagex','update',str(iso_tree/'sources/boot.wim'),'2','--check','--command',"add '"+str(hook)+"' '/'" ])
         boot_iso = work/'deploy.iso'
-        command(['xorriso','-indev',str(iso),'-outdev',str(boot_iso),'-map',str(iso_tree/'boot.wim'),'/sources/boot.wim','-boot_image','any','replay'])
+        command(['genisoimage','-udf','-allow-limited-size','-iso-level','3','-J','-R','-b','boot/etfsboot.com','-no-emul-boot','-boot-load-size','8','-eltorito-alt-boot','-e','efi/microsoft/boot/efisys.bin','-no-emul-boot','-o',str(boot_iso),str(iso_tree)])
+        shutil.rmtree(iso_tree)
         shutil.rmtree(payload); iso.unlink()
         disks = {}
         for name, size in [('installed',64),('prepared-usb',16),('small-usb',1)]:
