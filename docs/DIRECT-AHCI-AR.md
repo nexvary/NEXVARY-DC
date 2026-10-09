@@ -72,3 +72,17 @@ python3 scripts/rescue_map.py --image /media/other/second.img --output /media/ot
 التغطية الحالية لا تضم وضع Virtual Disk أو محرك النواة OSCDriver أو Direct IDE أو تحليل/تعطيل الرؤوس أو تشغيل سكربتات ATA عشوائية. لا تُعرض هذه الوظائف كمنفذة. يبقى محرك GPLv2 منفصلًا مع المصدر المثبت والترخيص وملف التعديل؛ لا يُدمج مصدره في تنفيذ Qt. المرجع: [OpenSuperClone](https://github.com/ISpillMyDrink/OpenSuperClone)، و[صيغة خرائط GNU ddrescue](https://www.gnu.org/software/ddrescue/manual/ddrescue_manual.html).
 
 عند استعادة الملفات من الصورة، احتفظ بالخريطة المجاورة `.dc-ahci.jsonl` أو `.readmap.jsonl`. يتحقق المحرك من SHA-256 للمقاطع الموثقة قبل إنشاء المخرجات. أي ملف يمر بمناطق مفقودة/مؤجلة يصنف ناقصًا ويسجل `sourceMissingBytes`، مع الاحتفاظ بالمقاطع السليمة اللاحقة. بيانات تخصيص الملفات في مناطق غير مقروءة لا تُعتمد، والذيل غير الموثق يبقى مجهولًا. خريطة تالفة أو خريطتان متعارضتان تمنعان الاستعادة حتى حل التعارض؛ تغيير مكان الصورة لا يجيز استئناف الإنقاذ.
+
+## إعادة بناء المحرك من الحزمة دون تنزيل المصدر
+
+تحتوي حزمة Linux على المصدر الأصلي المثبت والترخيص و`adapter.patch` وسكربتات توليد التعديل والبناء. بعد تثبيت تبعيات البناء أعلاه، يمكن استخدام المصدر المرفق بدل تنزيل GitHub:
+
+```sh
+mkdir rebuilt-source
+tar -xzf out/osc-direct/upstream-source.tar.gz -C rebuilt-source
+patch -d rebuilt-source -p1 < out/osc-direct/adapter.patch
+cmake -S rebuilt-source -B rebuilt-build -DCMAKE_BUILD_TYPE=Release
+cmake --build rebuilt-build --parallel 2
+```
+
+المحرك الناتج لا يُستخدم مع بيان بصمة المحرك القديم: تختلف بصمة البناء باختلاف الأدوات والبيئة. سكربت `qualify_opensuperclone.py --direct` يعيد التأهيل والبيان في مجلد جديد للمحرك الذي يبنيه؛ المحول يرفض بيانًا لا يطابق ملف المحرك.

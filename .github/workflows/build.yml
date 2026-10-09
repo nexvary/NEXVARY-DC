@@ -280,6 +280,8 @@ jobs:
         with:
           name: NEXVARY-Direct-AHCI-0.8.0
           path: |
+            scripts/qualify_opensuperclone.py
+            scripts/osc_adapter_patch.py
             scripts/direct_rescue.py
             scripts/relay_power.py
             scripts/rescue_map.py
