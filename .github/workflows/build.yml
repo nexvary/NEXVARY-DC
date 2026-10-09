@@ -352,6 +352,10 @@ jobs:
         with:
           pattern: NEXVARY-Windows-VM-*-0.8.0
           path: windows-proof
+      - uses: actions/download-artifact@v4
+        with:
+          name: CrystalDiskInfo-software-proof-0.8.0
+          path: crystal-proof
       - name: Package qualified Linux helper and corresponding sources
         run: tar -czf release/NEXVARY-DC-0.8.0-Linux-Direct-AHCI.tar.gz -C direct-engine .
       - name: Publish verified binaries
@@ -372,7 +376,9 @@ jobs:
               assert row['dcUSBPreparationTested'] and row['usbWindowsPEBoot'] and row['systemDiskRefused'] and row['changedIdentityRefused'] and row['insufficientSpaceRefused']
               windows[row['mode']]=row
           assert set(windows)=={'bios','uefi','secureboot'}
-          data['verification']={'directAHCIVM':direct,'installedWindowsVM':windows,'dcWindowsUSBEndToEndTested':True,'firmwareRepairCertifiedFamilies':0}
+          crystal=json.loads(pathlib.Path('crystal-proof/result.json').read_text(encoding='utf-8-sig'))
+          assert crystal['version']=='9.9.2' and crystal['nativeReportParsed'] and crystal['advancedVisibleWindows']>0 and crystal['advancedNormalClose'] and crystal['automaticAamApmDisabled']
+          data['verification']={'crystalDiskInfoSoftware':crystal,'nativeCTestLinux':23,'nativeCTestWindows':26,'directTransportTestsLinux':19,'directAHCIVM':direct,'installedWindowsVM':windows,'dcWindowsUSBEndToEndTested':True,'firmwareRepairCertifiedFamilies':0}
 
           p=pathlib.Path('release/NEXVARY-DC-0.8.0-Linux-Direct-AHCI.tar.gz')
           data['files'].append({'name':p.name,'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()})

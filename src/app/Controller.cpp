@@ -259,7 +259,7 @@ void Controller::readCrystalHealth() {
 void Controller::selectCrystalDisk(int index) {
  if(m_busy||index<0||index>=m_crystalDisks.size())return;
  const auto disk=QJsonObject::fromVariantMap(m_crystalDisks[index].toMap());const auto summary=disk.value("summary").toObject();const auto serial=summary.value("serial").toString().trimmed();
- m_healthDevice.clear();for(const auto &item:m_disks){auto d=item.toMap();if(!serial.isEmpty()&&d.value("serial").toString().trimmed()==serial)m_healthDevice=d.value("device").toString();}
+ m_healthDevice.clear();QStringList matches;for(const auto &item:m_disks){auto d=item.toMap();if(!serial.isEmpty()&&d.value("serial").toString().trimmed()==serial)matches.append(d.value("device").toString());}if(matches.size()==1)m_healthDevice=matches.first();
  recordHealth({{"status","completed"},{"operation","smart_read"},{"engine","CrystalDiskInfo 9.9.2"},{"summary",summary},{"fields",disk.value("fields")}});
 }
 void Controller::openCrystalPanel(bool arabic,bool acknowledged) {

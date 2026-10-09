@@ -52,7 +52,7 @@ void ini(const QString &directory,const wchar_t *key,const wchar_t *value) {
 QJsonObject readCrystalEngine(const QString &package,std::atomic_bool *cancel) {
 #ifdef Q_OS_WIN
  try {
-  QTemporaryDir temp;if(!temp.isValid())return error("Cannot stage read-only SMART engine.");stage(package,temp.path());
+  QTemporaryDir temp;if(!temp.isValid())return error("Cannot stage SMART engine.");stage(package,temp.path());
   ini(temp.path(),L"Language",L"English");ini(temp.path(),L"AutoAamApm",L"0");ini(temp.path(),L"Resident",L"0");ini(temp.path(),L"Startup",L"0");ini(temp.path(),L"AutoRefresh",L"0");
   QProcess process;process.setWorkingDirectory(temp.path());process.start(temp.filePath("DiskInfo64.exe"),{"/CopyExit"});if(!process.waitForStarted(5000))return error("CrystalDiskInfo requires administrator permission or its process could not start.");
   QElapsedTimer timer;timer.start();while(!process.waitForFinished(100)&&process.state()!=QProcess::NotRunning){if((cancel&&cancel->load())||timer.elapsed()>120000){process.kill();process.waitForFinished();return error("SMART engine cancelled or timed out; health remains unknown.");}}
