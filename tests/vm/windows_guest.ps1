@@ -19,6 +19,9 @@ try {
  Proof 'DC_INSTALLED_WINDOWS_BOOT_OK'
  $secure=(Get-ItemProperty HKLM:\SYSTEM\CurrentControlSet\Control\SecureBoot\State -ErrorAction SilentlyContinue).UEFISecureBootEnabled
  Proof $(if($secure -eq 1){'DC_SECURE_BOOT_ON'}else{'DC_SECURE_BOOT_OFF'})
+ $sourceHash=(Get-FileHash C:\source.iso -Algorithm SHA256).Hash.ToLowerInvariant()
+ if($sourceHash -ne '67cec5865eaa037a72ddc633a717a10a2bed50778862267223ddb9c60ef5da68'){throw 'Original evaluation ISO changed in transit'}
+ Proof ('DC_ORIGINAL_ISO_SHA256='+$sourceHash)
  $mode=(Get-Content C:\dc-mode.txt -Raw).Trim()
  Proof 'DC_DISK_ENUMERATION_BEGIN'
  $disks=@(Get-Disk)
@@ -63,10 +66,15 @@ try {
 wpeinit
 mode COM1: baud=115200 parity=n data=8 stop=1
 wpeutil UpdateBootInfo
-echo DC_WINDOWS_USB_WINPE_OK > COM1
-reg query HKLM\SYSTEM\CurrentControlSet\Control /v PEFirmwareType > COM1
+for %%d in (C D E F G H I J K L M N O P Q R S T U V W Y Z) do if exist %%d:\DCPROOF.MRK set PROOF=%%d:
+if not defined PROOF goto finish
+set LOG=%PROOF%\usb-proof.txt
+echo DC_WINDOWS_USB_WINPE_OK > "%LOG%"
+reg query HKLM\SYSTEM\CurrentControlSet\Control /v PEFirmwareType >> "%LOG%"
+reg query HKLM\SYSTEM\CurrentControlSet\Control\SecureBoot\State /v UEFISecureBootEnabled >> "%LOG%"
 reg query HKLM\SYSTEM\CurrentControlSet\Control\SecureBoot\State /v UEFISecureBootEnabled | find "0x1" >nul
-if errorlevel 1 (echo DC_USB_SECURE_BOOT_OFF > COM1) else (echo DC_USB_SECURE_BOOT_ON > COM1)
+if errorlevel 1 (echo DC_USB_SECURE_BOOT_OFF >> "%LOG%") else (echo DC_USB_SECURE_BOOT_ON >> "%LOG%")
+:finish
 wpeutil shutdown
 '@ | Set-Content (Join-Path $mount 'dc-pe-proof.cmd') -Encoding ascii
  @'

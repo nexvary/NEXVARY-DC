@@ -38,11 +38,14 @@ def deployment(mode):
         rows += ['create partition primary size=512', 'format fs=ntfs quick label=DC_BOOT', 'assign letter=S', 'active']
     else:
         rows += ['create partition efi size=260', 'format fs=fat32 quick label=DC_ESP', 'assign letter=S', 'create partition msr size=16']
-    rows += ['create partition primary', 'format fs=ntfs quick label=DC_WINDOWS', 'assign letter=C', 'exit']
+    rows += ['create partition primary', 'format fs=ntfs quick label=DC_WINDOWS', 'assign letter=W', 'exit']
     batch = r'''@echo off
 wpeinit
 mode COM1: baud=115200 parity=n data=8 stop=1
-echo DC_WINPE_DEPLOY_START > COM1
+for %%d in (C D E F G H I J K L M N O P Q R S T U V W Y Z) do if exist %%d:\DCPROOF.MRK set PROOF=%%d:
+if not defined PROOF goto fail
+set LOG=%PROOF%\deploy-proof.txt
+echo DC_WINPE_DEPLOY_START > "%LOG%"
 for %%d in (D E F G H I J K L M N O P Q R T U V W Y Z) do (
  if exist %%d:\sources\install.wim set INSTALL=%%d:
  if exist %%d:\dc-payload.marker set PAYLOAD=%%d:
@@ -75,7 +78,9 @@ echo DC_WINPE_DEPLOY_ERROR > COM1
 wpeutil shutdown
 '''
     bios = r'%INSTALL%\boot\bootsect.exe /nt60 S: /mbr > COM1 2>&1\nif errorlevel 1 goto fail' if mode == 'bios' else ''
-    return '\n'.join(rows)+'\n', batch.replace('FIRMWARE', 'BIOS' if mode == 'bios' else 'UEFI').replace('BIOSCODE', bios.replace('\\n', '\n')).replace('MODE', mode)
+    batch = batch.replace('FIRMWARE', 'BIOS' if mode == 'bios' else 'UEFI').replace('BIOSCODE', bios.replace('\\n', '\n')).replace('MODE', mode)
+    batch = batch.replace('C:\\', 'W:\\').replace('> COM1', '>> "%LOG%"')
+    return '\n'.join(rows)+'\n', batch
 
 
 def qmp_capture(out, phase, press_key=False):
@@ -130,6 +135,13 @@ def guest(out, mode, phase, drives, minutes):
         finally:
             if process.poll() is None: process.terminate(); process.wait(timeout=15)
     proof = (out/(phase+'-serial.txt')).read_text(errors='replace')
+    if phase in ('deploy', 'usb'):
+        # Minimal WinPE does not always enumerate the legacy COM driver. A new
+        # disposable FAT USB provides independent in-guest proof and diagnostics.
+        row = subprocess.run(['mtype','-i',str(out/'proof.img'),'::'+phase+'-proof.txt'], capture_output=True, text=True)
+        if row.returncode == 0:
+            (out/(phase+'-guest.txt')).write_text(row.stdout)
+            proof += '\n'+row.stdout
     print(proof[-6000:], flush=True)
     return proof
 
@@ -149,6 +161,12 @@ def main():
     out = Path('out/windows-vm-'+mode).resolve(); out.mkdir(parents=True, exist_ok=False)
     work = Path(os.environ['RUNNER_TEMP'])/('dc-kvm-'+mode); work.mkdir(exist_ok=False)
     try:
+        proof_disk = out/'proof.img'
+        with proof_disk.open('xb') as stream: stream.truncate(16*1024**2)
+        command(['mkfs.vfat','-F','16','-n','DCPROOF',str(proof_disk)])
+        marker = work/'DCPROOF.MRK'; marker.write_text('isolated guest proof disk\n')
+        command(['mcopy','-i',str(proof_disk),str(marker),'::DCPROOF.MRK'])
+        proof_usb = ['-drive','file='+str(proof_disk)+',format=raw,if=none,id=dcproof','-device','usb-storage,drive=dcproof,serial=DC_PROOF_ONLY,removable=on']
         if shutil.disk_usage(work).free < 35*1024**3: raise OSError('At least 35 GiB of ephemeral disk free space required')
         iso = work/'evaluation.iso'
         command(['curl','--fail','--location','--retry','5','--retry-all-errors','--retry-max-time','600','--output',str(iso),URL])
@@ -183,19 +201,23 @@ def main():
         system = ['-drive','file='+str(disks['installed'])+',format=raw,if=ide,index=0']
         usb = ['-device','qemu-xhci','-drive','file='+str(disks['prepared-usb'])+',format=raw,if=none,id=dcusb','-device','usb-storage,drive=dcusb,serial=DC_BOOT_TARGET,removable=on']
         cds = ['-boot','order=d','-drive','file='+str(boot_iso)+',format=raw,media=cdrom,if=ide,index=2,readonly=on','-drive','file='+str(payload_iso)+',format=raw,media=cdrom,if=ide,index=3,readonly=on']
-        proof = guest(out, mode, 'deploy', system+cds, 30)
+        proof = guest(out, mode, 'deploy', system+cds+['-device','qemu-xhci']+proof_usb, 30)
         require(proof, 'DC_WINPE_DEPLOY_OK')
         boot_iso.unlink(); payload_iso.unlink()
         small = ['-drive','file='+str(disks['small-usb'])+',format=raw,if=none,id=dcsmall','-device','usb-storage,drive=dcsmall,serial=DC_SMALL_TARGET,removable=on']
-        proof = guest(out, mode, 'installed', system+usb+small, 40)
+        proof = guest(out, mode, 'installed', system+usb+small+proof_usb, 40)
         require(proof, 'DC_INSTALLED_WINDOWS_BOOT_OK','DC_SYSTEM_DISK_REFUSED','DC_USB_IDENTITY_REFUSED','DC_USB_SPACE_REFUSED','DC_USB_PREPARED=','DC_USB_TEST_HOOK_READY', 'DC_SECURE_BOOT_'+('ON' if mode == 'secureboot' else 'OFF'))
         reference = sha(disks['prepared-usb'])
         protected_usb = [x.replace(',id=dcusb',',snapshot=on,id=dcusb') for x in usb]
-        proof = guest(out, mode, 'usb', ['-boot','order=c']+protected_usb, 15)
+        proof = guest(out, mode, 'usb', ['-boot','order=c']+protected_usb+proof_usb, 15)
         require(proof, 'DC_WINDOWS_USB_WINPE_OK','DC_USB_SECURE_BOOT_'+('ON' if mode == 'secureboot' else 'OFF'))
         if sha(disks['prepared-usb']) != reference: raise ValueError('Prepared reference USB changed during boot')
         (out/'result.json').write_text(json.dumps(dict(mode=mode, acceleration='KVM', installedWindowsBoot=True, secureBoot=mode=='secureboot', evaluationISO_SHA256=SHA, dcUSBPreparationTested=True, usbWindowsPEBoot=True, systemDiskRefused=True, changedIdentityRefused=True, insufficientSpaceRefused=True, preparedUSB_SHA256=reference, testHook='WinPE batch shell; signed EFI loader unchanged'), indent=2))
     finally:
+        # The FAT scratch image is test evidence only; retain extracted text, not
+        # arbitrary guest disk contents, and never publish Microsoft images.
+        (out/'proof.img').unlink(missing_ok=True)
+        (out/'vars.fd').unlink(missing_ok=True)
         shutil.rmtree(work)
 
 
