@@ -26,6 +26,21 @@ function Guard {
  }
  return $d
 }
+function Set-EmptyDiskLayout([string]$Style) {
+ # Clear-Disk may leave an empty MBR disk initialized (not RAW), especially
+ # removable media. Initialize-Disk is only valid for RAW disks.
+ $fresh=Guard
+ $parts=@(Get-Partition -DiskNumber $fresh.Number -ErrorAction SilentlyContinue)
+ $action=Get-EmptyDiskStyleAction $fresh $r $parts.Count $Style
+ $again=Guard
+ if([string]$again.PartitionStyle -cne [string]$fresh.PartitionStyle) { throw 'Partition style changed before conversion.' }
+ $parts=@(Get-Partition -DiskNumber $again.Number -ErrorAction SilentlyContinue)
+ $null=Get-EmptyDiskStyleAction $again $r $parts.Count $Style
+ if($action -eq 'initialize') { Initialize-Disk -Number $again.Number -PartitionStyle $Style | Out-Null }
+ elseif($action -eq 'convert') { Set-Disk -Number $again.Number -PartitionStyle $Style | Out-Null }
+ $verified=Guard
+ if([string]$verified.PartitionStyle -cne $Style) { throw 'Partition style verification failed.' }
+}
 try {
  if($r.action -eq 'inventory') {
   $ds=@(Get-Disk | ForEach-Object {
@@ -63,7 +78,7 @@ try {
   if($r.style -eq 'MBR' -and $d.Size -gt 2TB) { throw 'MBR disks above 2 TiB are not supported.' }
   $null=Guard
   Clear-Disk -Number $d.Number -RemoveData -RemoveOEM -Confirm:$false
-  Initialize-Disk -Number $d.Number -PartitionStyle $r.style | Out-Null
+  Set-EmptyDiskLayout ([string]$r.style)
   New-Partition -DiskNumber $d.Number -UseMaximumSize -AssignDriveLetter | Format-Volume -FileSystem $r.filesystem -NewFileSystemLabel 'NEXVARY' -Force -Confirm:$false | Out-Null
  }
  elseif($r.action -in @('check','repair')) {
@@ -108,7 +123,7 @@ try {
    }
    $null=Guard
    Clear-Disk -Number $d.Number -RemoveData -RemoveOEM -Confirm:$false
-   Initialize-Disk -Number $d.Number -PartitionStyle $(if($bios){'MBR'}else{'GPT'}) | Out-Null
+   Set-EmptyDiskLayout $(if($bios){'MBR'}else{'GPT'})
    $p=New-Partition -DiskNumber $d.Number -Size $partSize -AssignDriveLetter
    $p | Format-Volume -FileSystem FAT32 -NewFileSystemLabel 'NEXVARYBOOT' -Force -Confirm:$false | Out-Null
    if($bios) { $p | Set-Partition -IsActive $true }

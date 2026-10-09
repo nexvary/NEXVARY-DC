@@ -49,3 +49,5 @@ Optional identified USBRelay for source-only +5V/+12V; electrical wiring require
 Windows bundles helper sources/instructions, not a native AHCI transport. No certified firmware/SA/translator family.
 
 Release qualification requires installed Windows and production-prepared virtual USB boot to Windows PE in BIOS/UEFI/UEFI Secure Boot for one pinned evaluation ISO; this is not universal Secure Boot certification.
+Direct AHCI fast pass defers unreadable chunks; targeted retry into a separate image, reverse missing-sector reads, bounded ATA timeout and verified ddrescue map export.
+OSCDriver virtual disk, Direct IDE and head analysis are not integrated in NEXVARY.

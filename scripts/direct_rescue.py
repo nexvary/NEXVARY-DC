@@ -3,6 +3,7 @@
 No firmware writes, controller unbind, arbitrary scripts or OS-driver override.
 """
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -10,6 +11,7 @@ from pathlib import Path
 import re
 import shutil
 import signal
+import stat as file_stat
 import subprocess
 import tempfile
 import time
@@ -90,12 +92,14 @@ endif
 '''
 
 
-def read_script(identity, lba, count, output):
+def read_script(identity, lba, count, output, timeout_seconds=10):
     # Fixed data-in commands only. No user-provided script/path interpolation.
     model = checked_text(identity['model'], 40)
     serial = checked_text(identity['serial'], 20)
     firmware = checked_text(identity['firmware'], 8)
     sectors = identity['bytes'] // 512
+    if type(timeout_seconds) is not int or not 1 <= timeout_seconds <= 60:
+        raise ValueError('Read timeout must be 1..60 seconds')
     if type(lba) is not int or type(count) is not int or not 0 <= lba < sectors or not 1 <= count <= 1024 or count > sectors-lba:
         raise ValueError('Read outside source or transfer limit')
     if not re.fullmatch(r'/[A-Za-z0-9_./-]+', output):
@@ -128,7 +132,7 @@ endif
 buffersize {count*512}
 clearbuffer
 setreaddma
-generaltimeout 10000000
+generaltimeout {timeout_seconds*1000000}
 ata48cmd 0 {count} {(lba>>32)&65535} {(lba>>16)&65535} {lba&65535} 0xe0 0x25
 {check}if $data_transferred != {count*512}
  exit 9
@@ -141,8 +145,11 @@ exit 0
 
 
 class AHCI:
-    def __init__(self, engine, qualification, identity):
+    def __init__(self, engine, qualification, identity, timeout_seconds=10):
         self.identity = identity
+        if type(timeout_seconds) is not int or not 1 <= timeout_seconds <= 60:
+            raise ValueError('Read timeout must be 1..60 seconds')
+        self.timeout_seconds = timeout_seconds
         for key, size in [('serial',20), ('model',40), ('firmware',8)]:
             checked_text(identity[key], size)
         if type(identity['bytes']) is not int or identity['bytes'] <= 0 or identity['bytes'] % 512 or identity['bytes'] > (1<<48)*512:
@@ -166,7 +173,7 @@ class AHCI:
             raise ValueError('Controller topology changed')
         with tempfile.TemporaryDirectory(prefix='dc_ahci_', dir='/tmp') as tmp:
             output, script = Path(tmp)/'data.bin', Path(tmp)/'read.osc'
-            content = read_script(self.identity, offset//512, count//512, str(output))
+            content = read_script(self.identity, offset//512, count//512, str(output), self.timeout_seconds)
             if identify_only:
                 prefix, separator, _ = content.partition('\nbuffersize 512\nclearbuffer')
                 if not separator: raise ValueError('Invalid generated identify script')
@@ -191,16 +198,23 @@ class AHCI:
             return data
 
 
-def restore_progress(destination, identity):
+def restore_progress(destination, identity, repair_tail=True, strategy=None):
     destination = Path(destination)
     journal = Path(str(destination)+'.dc-ahci.jsonl')
     stat = destination.stat()
+    if not file_stat.S_ISREG(stat.st_mode) or not journal.is_file() or journal.is_symlink():
+        raise ValueError('Resume requires a regular image and journal, never a raw disk')
+    size = identity.get('bytes')
+    if type(size) is not int or size <= 0 or size % 512 or size > (1<<48)*512:
+        raise ValueError('Invalid source capacity in map')
     position, bad = 0, 0
     with journal.open('rb') as source, destination.open('rb') as image:
         first = source.readline(65536)
         header = json.loads(first)
-        if header != {'schema': 1, 'identity': identity, 'destination': str(destination.resolve()),
-                      'device': stat.st_dev, 'inode': stat.st_ino}:
+        expected = {'schema': 1, 'identity': identity, 'destination': str(destination.resolve()),
+                    'device': stat.st_dev, 'inode': stat.st_ino}
+        if strategy: expected['strategy'] = strategy
+        if header != expected:
             raise ValueError('Resume source/destination identity mismatch')
         valid = len(first)
         while True:
@@ -210,6 +224,8 @@ def restore_progress(destination, identity):
                 if source.read(1): raise ValueError('Journal row exceeds limit')
                 break
             row = json.loads(line)
+            if row.get('phase', 'sector-checked') not in ('sector-checked', 'deferred'):
+                raise ValueError('Unknown rescue phase')
             length = row['length']
             if type(length) is not int or row['offset'] != position or not 0 < length <= CHUNK or length % 512 or position+length > identity['bytes']:
                 raise ValueError('Map exceeds source or is discontinuous')
@@ -224,25 +240,79 @@ def restore_progress(destination, identity):
             position += length
             valid += len(line)
     # No mutation before all identities, map entries and checksums pass.
-    with journal.open('r+b') as stream:
-        stream.truncate(valid)
-        stream.flush(); os.fsync(stream.fileno())
-    with destination.open('r+b') as stream:
-        stream.truncate(position)
-        stream.flush(); os.fsync(stream.fileno())
+    if repair_tail:
+        with journal.open('r+b') as stream:
+            stream.truncate(valid)
+            stream.flush(); os.fsync(stream.fileno())
+        with destination.open('r+b') as stream:
+            stream.truncate(position)
+            stream.flush(); os.fsync(stream.fileno())
     return position, bad
 
 
-def rescue(source, destination, resume=False, retries=1, cancel=lambda: False, cycle=None, on_progress=lambda _: None):
+class CancelledRead(Exception):
+    pass
+
+
+def recover_sectors(source, position, data, ranges, retries, cancel, cycle, reverse):
+    failed = []
+    ordered = reversed(ranges) if reverse else ranges
+    for first, size in ordered:
+        sectors = range(first, first+size, 512)
+        for sector in reversed(sectors) if reverse else sectors:
+            if cancel(): raise CancelledRead()
+            for attempt in range(retries+1):
+                try:
+                    value = source.read(sector, 512)
+                    if len(value) != 512: raise OSError('Short sector')
+                    data[sector-position:sector-position+512] = value
+                    break
+                except OSError:
+                    if cycle and attempt < retries: cycle()
+            else:
+                failed.append(sector)
+    # Map order is ascending even when the actual read order is reversed.
+    bad = []
+    for sector in sorted(failed):
+        if bad and bad[-1][0]+bad[-1][1] == sector: bad[-1][1] += 512
+        else: bad.append([sector, 512])
+    return bytes(data), bad
+
+
+def rescue(source, destination, resume=False, retries=1, cancel=lambda: False, cycle=None,
+           on_progress=lambda _: None, fast_pass=False, retry_from=None, reverse=False):
     if type(retries) is not int or not 0 <= retries <= 5:
         raise ValueError('Retries must be 0..5')
+    if fast_pass and retry_from:
+        raise ValueError('Choose fast pass or targeted retry, not both')
     identity = source.identity
     # Probe actual ATA identity before creating/truncating any output or journal.
     if hasattr(source,'validate'): source.validate()
     destination = Path(destination).resolve()
     journal = Path(str(destination)+'.dc-ahci.jsonl')
+    base = None
+    strategy = None
+    if retry_from:
+        base = Path(retry_from).resolve()
+        if base == destination or (destination.exists() and os.path.samefile(base, destination)):
+            raise ValueError('Targeted retry requires a separate destination image')
+        # A damaged/changed base is refused before output mutation. Never truncate it.
+        base_journal = Path(str(base)+'.dc-ahci.jsonl')
+        with base_journal.open('rb') as stream:
+            base_header = json.loads(stream.readline(65536))
+            stream.seek(0)
+            base_hash = hashlib.file_digest(stream, 'sha256').hexdigest()
+        covered, _ = restore_progress(base, identity, repair_tail=False,
+                                     strategy=base_header.get('strategy'))
+        if covered != identity['bytes']:
+            raise ValueError('Finish/resume the base pass before targeted retry')
+        strategy = {'retryBase':str(base), 'mapSHA256':base_hash, 'reverse':bool(reverse)}
+    elif fast_pass:
+        strategy = {'fastPass':True}
+    elif reverse:
+        strategy = {'reverse':True}
     if resume:
-        position, bad_bytes = restore_progress(destination, identity)
+        position, bad_bytes = restore_progress(destination, identity, strategy=strategy)
     else:
         position, bad_bytes = 0, 0
         if destination.exists() or journal.exists():
@@ -254,52 +324,75 @@ def rescue(source, destination, resume=False, retries=1, cancel=lambda: False, c
             image.flush(); os.fsync(image.fileno())
         stat = destination.stat()
         with journal.open('x') as progress:
-            progress.write(json.dumps({'schema':1, 'identity':identity, 'destination':str(destination),
-                                       'device':stat.st_dev, 'inode':stat.st_ino})+'\n')
+            header = {'schema':1, 'identity':identity, 'destination':str(destination),
+                      'device':stat.st_dev, 'inode':stat.st_ino}
+            if strategy: header['strategy'] = strategy
+            progress.write(json.dumps(header)+'\n')
             progress.flush(); os.fsync(progress.fileno())
         if os.name == 'posix':
             fd = os.open(destination.parent, os.O_RDONLY)
             try: os.fsync(fd)
             finally: os.close(fd)
-    with destination.open('r+b') as image, journal.open('a') as progress:
+    with contextlib.ExitStack() as stack:
+        image = stack.enter_context(destination.open('r+b'))
+        progress = stack.enter_context(journal.open('a'))
+        if base:
+            base_image = stack.enter_context(base.open('rb'))
+            base_map = stack.enter_context(Path(str(base)+'.dc-ahci.jsonl').open('rb'))
+            header = json.loads(base_map.readline(65536))
+            stat = os.fstat(base_image.fileno())
+            expected = {'schema':1, 'identity':identity, 'destination':str(base),
+                        'device':stat.st_dev, 'inode':stat.st_ino}
+            if base_header.get('strategy'): expected['strategy'] = base_header['strategy']
+            if header != expected:
+                raise ValueError('Base image identity changed')
+            while base_image.tell() < position:
+                row = json.loads(base_map.readline(CHUNK))
+                base_image.seek(row['length'], 1)
         image.seek(position)
         while position < identity['bytes'] and not cancel():
             length = min(CHUNK, identity['bytes']-position)
             bad = []
+            phase = 'sector-checked'
             try:
-                data = source.read(position, length)
-                if len(data) != length: raise OSError('Short chunk')
-            except OSError:
-                data = bytearray(length)
-                for sector in range(position, position+length, 512):
-                    if cancel():
-                        return {'cancelled':True, 'bytes':position, 'badBytes':bad_bytes}
-                    recovered = False
-                    for attempt in range(retries+1):
-                        try:
-                            value = source.read(sector, 512)
-                            if len(value) != 512: raise OSError('Short sector')
-                            data[sector-position:sector-position+512] = value
-                            recovered = True
-                            break
-                        except OSError:
-                            # Cycling is opt-in and globally bounded by power adapter.
-                            if cycle and attempt < retries: cycle()
-                    if not recovered:
-                        if bad and bad[-1][0]+bad[-1][1] == sector: bad[-1][1] += 512
-                        else: bad.append([sector,512])
-                data = bytes(data)
+                if base:
+                    row = json.loads(base_map.readline(CHUNK))
+                    if row['offset'] != position or row['length'] != length:
+                        raise ValueError('Base chunk layout changed')
+                    data = bytearray(base_image.read(length))
+                    if digest(data) != row['sha256']:
+                        raise ValueError('Base image changed during targeted retry')
+                    data, bad = recover_sectors(source, position, data, row['bad'],
+                                                retries, cancel, cycle, reverse)
+                else:
+                    try:
+                        data = source.read(position, length)
+                        if len(data) != length: raise OSError('Short chunk')
+                    except OSError:
+                        if fast_pass:
+                            data, bad, phase = bytes(length), [[position, length]], 'deferred'
+                        else:
+                            data, bad = recover_sectors(source, position, bytearray(length),
+                                                        [[position, length]], retries, cancel, cycle, reverse)
+            except CancelledRead:
+                return {'cancelled':True, 'bytes':position, 'badBytes':bad_bytes}
             if image.write(data) != length: raise OSError('Short output write')
             image.flush(); os.fsync(image.fileno())
             image.seek(position)
             if digest(image.read(length)) != digest(data): raise OSError('Output readback mismatch')
-            row = {'offset':position,'length':length,'sha256':digest(data),'bad':bad}
+            row = {'offset':position,'length':length,'sha256':digest(data),'bad':bad,'phase':phase}
             progress.write(json.dumps(row)+'\n')
             progress.flush(); os.fsync(progress.fileno())
             position += length
             bad_bytes += sum(size for _,size in bad)
             on_progress({'bytes':position,'total':identity['bytes'],'badBytes':bad_bytes})
+        if base:
+            base_map.seek(0)
+            if hashlib.file_digest(base_map, 'sha256').hexdigest() != base_hash:
+                raise ValueError('Base map changed during targeted retry')
     return {'cancelled':position < identity['bytes'], 'bytes':position, 'badBytes':bad_bytes,
+            'unreadableOrDeferredBytes':bad_bytes,
+            'fastPass':bool(fast_pass), 'targetedRetry':bool(base),
             'contentVerified':False, 'status':'read-complete' if not bad_bytes else 'incomplete'}
 
 
@@ -312,13 +405,18 @@ def main():
     parser.add_argument('--relay', help='Optional isolated source-power relay JSON')
     parser.add_argument('--resume', action='store_true')
     parser.add_argument('--retries', type=int, default=1)
+    parser.add_argument('--timeout-seconds', type=int, default=10, help='ATA command timeout 1..60; not a process-kill deadline')
+    parser.add_argument('--fast-pass', action='store_true', help='Defer failed chunks; gather readable chunks first')
+    parser.add_argument('--retry-from', help='Verified complete earlier image/map; recover only its missing sectors into a NEW image')
+    parser.add_argument('--reverse', action='store_true', help='Read failed sectors in reverse order within each chunk')
+    parser.add_argument('--export-map', help='Write a new ddrescue-format map after this pass')
     args = parser.parse_args()
     if os.name != 'posix' or os.geteuid() != 0: raise ValueError('Requires root in a live Linux environment')
     stopped = [False]
     # Child session is isolated from terminal cancellation; parent stops after DMA cleanup.
     signal.signal(signal.SIGINT, lambda *_: stopped.__setitem__(0, True))
     signal.signal(signal.SIGTERM, lambda *_: stopped.__setitem__(0, True))
-    source = AHCI(args.engine, args.qualification, json.loads(Path(args.identity).read_text()))
+    source = AHCI(args.engine, args.qualification, json.loads(Path(args.identity).read_text()), args.timeout_seconds)
     cycle = None
     if args.relay:
         from relay_power import RelayPower
@@ -332,7 +430,12 @@ def main():
         if time.monotonic()-last_progress[0] >= 10 or row['bytes'] == row['total']:
             print(json.dumps(row),file=sys.stderr,flush=True)
             last_progress[0] = time.monotonic()
-    print(json.dumps(rescue(source,args.output,args.resume,args.retries,lambda:stopped[0],cycle,progress)))
+    result = rescue(source,args.output,args.resume,args.retries,lambda:stopped[0],cycle,progress,
+                    args.fast_pass,args.retry_from,args.reverse)
+    if args.export_map:
+        from rescue_map import export_map
+        export_map(args.output,args.export_map)
+    print(json.dumps(result))
 
 
 if __name__ == '__main__':

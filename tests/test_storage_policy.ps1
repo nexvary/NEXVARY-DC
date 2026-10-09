@@ -15,6 +15,17 @@ $p=[pscustomobject]@{PartitionNumber=1;Offset=1MB;Size=4GB;IsBoot=$false;IsSyste
 $pr=[pscustomobject]@{partition=1;offset=1MB;partitionBytes=4GB}
 Assert-Partition $p $pr
 $pr.offset=2MB;MustReject {Assert-Partition $p $pr}
+$d | Add-Member -NotePropertyName PartitionStyle -NotePropertyValue 'RAW'
+if((Get-EmptyDiskStyleAction $d $r 0 'GPT') -ne 'initialize'){throw 'RAW initialization decision failed'}
+$d.PartitionStyle='MBR'
+if((Get-EmptyDiskStyleAction $d $r 0 'MBR') -ne 'keep'){throw 'Empty initialized MBR must be retained'}
+if((Get-EmptyDiskStyleAction $d $r 0 'GPT') -ne 'convert'){throw 'Empty MBR to GPT conversion decision failed'}
+$d.PartitionStyle='GPT'
+if((Get-EmptyDiskStyleAction $d $r 0 'MBR') -ne 'convert'){throw 'Empty GPT to MBR conversion decision failed'}
+MustReject {Get-EmptyDiskStyleAction $d $r 1 'GPT'}
+MustReject {Get-EmptyDiskStyleAction $d $r 0 'INVALID'}
+$d.IsSystem=$true;MustReject {Get-EmptyDiskStyleAction $d $r 0 'GPT'};$d.IsSystem=$false
+$r.serial='CHANGED';MustReject {Get-EmptyDiskStyleAction $d $r 0 'GPT'};$r.serial='42'
 # Parse the complete production script without touching any disk.
 $tokens=$null;$errors=$null
 $null=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot '../scripts/storage.ps1'),[ref]$tokens,[ref]$errors)

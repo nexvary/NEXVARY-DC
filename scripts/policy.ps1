@@ -13,3 +13,13 @@ function Assert-FileSystem([string]$FileSystem, [long]$Size) {
  if ($FileSystem -notin @('NTFS','exFAT','FAT32')) { throw 'Unsupported filesystem.' }
  if ($FileSystem -eq 'FAT32' -and $Size -gt 32GB) { throw 'FAT32 formatting is limited to 32 GiB. Select exFAT/NTFS or a smaller partition.' }
 }
+function Get-EmptyDiskStyleAction($Disk, $Request, [int]$PartitionCount, [string]$Style) {
+ Assert-ExternalDisk $Disk $Request
+ if($Style -notin @('GPT','MBR') -or $PartitionCount -ne 0) { throw 'Partition conversion requires a verified empty disk and GPT/MBR style.' }
+ if($Style -eq 'MBR' -and [long]$Disk.Size -gt 2TB) { throw 'MBR disks above 2 TiB are not supported.' }
+ $current=[string]$Disk.PartitionStyle
+ if($current -eq 'RAW') { return 'initialize' }
+ if($current -notin @('GPT','MBR')) { throw 'Unknown current partition style.' }
+ if($current -eq $Style) { return 'keep' }
+ return 'convert'
+}

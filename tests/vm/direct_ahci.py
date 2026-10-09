@@ -30,7 +30,7 @@ binary(engine)
 # Runtime engine must have the same hash as its qualification report.
 shutil.copyfile(engine,ram/'engine');(ram/'engine').chmod(0o755)
 shutil.copyfile('out/osc-direct/qualification.json',ram/'qualification.json')
-for name in ['direct_rescue','relay_power']:
+for name in ['direct_rescue','relay_power','rescue_map']:
     shutil.copyfile('scripts/'+name+'.py',ram/(name+'.py'))
 kernel=Path(sorted(glob.glob('/boot/vmlinuz-*'))[-1]);version=kernel.name.removeprefix('vmlinuz-')
 for line in subprocess.check_output(['modprobe','--set-version',version,'--show-depends','ahci'],text=True).splitlines():
@@ -67,13 +67,34 @@ result=dc.rescue(source,'/tmp/image.bin',resume=True)
 assert not result['cancelled'] and result['badBytes']==0,result
 actual=hashlib.sha256(pathlib.Path('/tmp/image.bin').read_bytes()).hexdigest()
 assert actual=='EXPECTED',actual
+# Inject a known missing sector into a *destination fixture*, not the source.
+# Retry must issue exactly one actual AHCI sector read and preserve the base.
+hole=pathlib.Path('/tmp/hole.bin')
+hole.write_bytes(pathlib.Path('/tmp/image.bin').read_bytes())
+with hole.open('r+b') as stream:
+ stream.seek(512);stream.write(bytes(512))
+rows=[json.loads(x) for x in pathlib.Path('/tmp/image.bin.dc-ahci.jsonl').read_text().splitlines()]
+stat=hole.stat()
+rows[0].update(destination=str(hole),device=stat.st_dev,inode=stat.st_ino)
+rows[1]['bad']=[[512,512]]
+rows[1]['sha256']=hashlib.sha256(hole.read_bytes()[:dc.CHUNK]).hexdigest()
+pathlib.Path(str(hole)+'.dc-ahci.jsonl').write_text(''.join(json.dumps(x)+'\\n' for x in rows))
+base_sha=hashlib.sha256(hole.read_bytes()).hexdigest()
+before=calls[0]
+retry=dc.rescue(source,'/tmp/retried.bin',retry_from=hole,reverse=True)
+assert retry['badBytes']==0 and calls[0]==before+1,retry
+assert hashlib.sha256(pathlib.Path('/tmp/retried.bin').read_bytes()).hexdigest()==actual
+assert hashlib.sha256(hole.read_bytes()).hexdigest()==base_sha
+from rescue_map import export_map
+export_map('/tmp/retried.bin','/tmp/retried.map')
+assert '0x0 0x200000 +' in pathlib.Path('/tmp/retried.map').read_text()
 # Hardware identity change is rejected before a data read.
 source.identity['serial']='WRONG'
 try:
  source.read(0,512)
 except ValueError:pass
 else:raise AssertionError('Changed source accepted')
-print('DC_DIRECT_AHCI_OK='+json.dumps({'sha256':actual,'resume':True,'identityRejected':True,'bytes':2097152}),flush=True)
+print('DC_DIRECT_AHCI_OK='+json.dumps({'sha256':actual,'resume':True,'identityRejected':True,'bytes':2097152,'targetedRetry':True,'injectedDestinationHole':True,'mapExport':True}),flush=True)
 '''.replace('EXPECTED',expected))
 (ram/'init').write_text('''#!/bin/sh
 /bin/busybox mount -t proc proc /proc
@@ -109,4 +130,6 @@ extents=json.loads(subprocess.check_output(['qemu-img','map','--output=json',str
 assert not any(x.get('depth')==0 and x.get('data') for x in extents),'Source write allocated an overlay data cluster'
 result={'sourceWritesObserved':False,'transport':'OpenSuperClone direct AHCI MMIO/DMA','sourceSHA256':expected,'sourceUnchanged':True,
         'readBytes':len(data),'cancelResumeTested':True,'sourceIdentityRejected':True,'physicalHardwareTested':False}
+result.update(targetedRetryTested=True, reverseSectorReadTested=True, mapExportTested=True,
+              faultFixture='one injected missing destination sector; no physical fault simulated')
 (out/'results.json').write_text(json.dumps(result,indent=2));print(json.dumps(result))
