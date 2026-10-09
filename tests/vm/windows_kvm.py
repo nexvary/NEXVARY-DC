@@ -41,7 +41,6 @@ def deployment(mode):
     rows += ['create partition primary', 'format fs=ntfs quick label=DC_WINDOWS', 'assign letter=W', 'exit']
     batch = r'''@echo off
 wpeinit
-mode COM1: baud=115200 parity=n data=8 stop=1
 for %%d in (C D E F G H I J K L M N O P Q R S T U V W Y Z) do if exist %%d:\DCPROOF.MRK set PROOF=%%d:
 if not defined PROOF goto fail
 set LOG=%PROOF%\deploy-proof.txt

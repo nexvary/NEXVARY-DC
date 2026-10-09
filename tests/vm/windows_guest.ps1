@@ -64,7 +64,6 @@ try {
  @'
 @echo off
 wpeinit
-mode COM1: baud=115200 parity=n data=8 stop=1
 wpeutil UpdateBootInfo
 for %%d in (C D E F G H I J K L M N O P Q R S T U V W Y Z) do if exist %%d:\DCPROOF.MRK set PROOF=%%d:
 if not defined PROOF goto finish
