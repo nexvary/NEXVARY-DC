@@ -44,7 +44,7 @@ function Get-RecoveryBootState($Snapshot) {
   $items=if($item.PSIsContainer){@(Get-ChildItem -LiteralPath $source -Recurse -Force -ErrorAction Stop)}else{@($item)}
   foreach($entry in ($items | Sort-Object FullName)) {
    if($entry.Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Redirected boot file refused.'}
-   if(!$entry.PSIsContainer){$state+=@{path=$entry.FullName.Substring($Snapshot.boot.root.Length);hash=(Get-FileHash -LiteralPath $entry.FullName -Algorithm SHA256).Hash}}
+   if(!$entry.PSIsContainer){$state+=[ordered]@{path=$entry.FullName.Substring($Snapshot.boot.root.Length);hash=(Get-FileHash -LiteralPath $entry.FullName -Algorithm SHA256).Hash}}
   }
  }
  return ,$state
