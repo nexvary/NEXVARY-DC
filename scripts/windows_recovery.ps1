@@ -44,7 +44,7 @@ function Get-RecoveryBootState($Snapshot) {
   $items=if($item.PSIsContainer){@(Get-ChildItem -LiteralPath $source -Recurse -Force -ErrorAction Stop)}else{@($item)}
   foreach($entry in ($items | Sort-Object FullName)) {
    if($entry.Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Redirected boot file refused.'}
-   if(!$entry.PSIsContainer){$state+=[ordered]@{path=$entry.FullName.Substring($Snapshot.boot.root.Length);hash=(Get-FileHash -LiteralPath $entry.FullName -Algorithm SHA256).Hash}}
+   if(!$entry.PSIsContainer){$state+=[ordered]@{path=$entry.FullName.Substring($Snapshot.boot.root.Length);hash=(Get-RecoveryFileHash $entry.FullName)}}
   }
  }
  return ,$state
@@ -65,12 +65,18 @@ function Get-RecoverySnapshot($Request) {
   if((Get-Item -LiteralPath $path).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Reparse points are not supported.'}
  }
  if((Get-Item -LiteralPath $win).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Windows directory is redirected.'}
- $hash=Get-FileHash -LiteralPath (Join-Path $win 'System32\Config\BCD-Template') -Algorithm SHA256
+ $hash=Get-RecoveryFileHash (Join-Path $win 'System32\Config\BCD-Template')
  # Free space may change naturally. It is checked independently, not part of identity.
  $windows.Remove('free');$boot.Remove('free');$backup.Remove('free')
- $snapshot=[ordered]@{windows=$windows;boot=$boot;backup=$backup;templateHash=$hash.Hash;mode=[string]$Request.mode;task=[string]$Request.task}
+ $snapshot=[ordered]@{windows=$windows;boot=$boot;backup=$backup;templateHash=$hash;mode=[string]$Request.mode;task=[string]$Request.task}
  $snapshot.bootState=Get-RecoveryBootState $snapshot
  return $snapshot
+}
+function Get-RecoveryFileHash([string]$Path) {
+ $stream=[IO.File]::OpenRead((Get-Item -LiteralPath $Path -Force).FullName)
+ $sha=[Security.Cryptography.SHA256]::Create()
+ try{return ([BitConverter]::ToString($sha.ComputeHash($stream))).Replace('-','')}
+ finally{$stream.Dispose();$sha.Dispose()}
 }
 function Get-RecoveryHash($Value) {
  $sha=[Security.Cryptography.SHA256]::Create()
@@ -104,9 +110,9 @@ function Backup-RecoveryFiles($Snapshot) {
     $rel=$entry.FullName.Substring($Snapshot.boot.root.Length)
     $dest=Join-Path $dir $rel
     New-Item -ItemType Directory -Path (Split-Path -Parent $dest) -Force | Out-Null
-    $before=(Get-FileHash -LiteralPath $entry.FullName -Algorithm SHA256).Hash
+    $before=(Get-RecoveryFileHash $entry.FullName)
     Copy-Item -LiteralPath $entry.FullName -Destination $dest -Force -ErrorAction Stop
-    if((Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash -cne $before){throw 'Backup readback mismatch.'}
+    if((Get-RecoveryFileHash $dest) -cne $before){throw 'Backup readback mismatch.'}
     $files+=@{path=$rel;sha256=$before;bytes=$entry.Length}
    }
   }

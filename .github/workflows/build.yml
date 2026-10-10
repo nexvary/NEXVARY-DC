@@ -56,6 +56,10 @@ jobs:
         run: python -m unittest discover -s tests/boot -v
       - name: Direct transport and relay safety tests
         run: python -m unittest discover -s tests/direct -v
+      - name: Offline Windows recovery safety tests (PowerShell 5.1)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: ./tests/boot/test_windows_recovery.ps1
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
       - name: Build

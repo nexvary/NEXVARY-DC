@@ -48,10 +48,11 @@ $s.bootState=@('changed-boot-file');Assert-Rejected {Assert-RecoveryApply $apply
 $temp=Join-Path ([IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString('N'))
 try {
  New-Item -ItemType Directory -Path "$temp\source\Boot","$temp\backup" -Force | Out-Null
- Set-Content -LiteralPath "$temp\source\Boot\BCD" -Value 'fixture-store'
+ Set-Content -LiteralPath "$temp\source\Boot\BCD" -Value 'abc' -NoNewline -Encoding Ascii
+ if((Get-RecoveryFileHash "$temp\source\Boot\BCD") -cne 'BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD'){throw 'SHA-256 reference vector failed.'}
  $s.mode='BIOS';$s.boot.root="$temp\source\";$s.backup.root="$temp\backup\"
  $saved=Backup-RecoveryFiles $s
- if((Get-FileHash "$saved\Boot\BCD").Hash -cne (Get-FileHash "$temp\source\Boot\BCD").Hash){throw 'Backup mismatch.'}
+ if((Get-RecoveryFileHash "$saved\Boot\BCD") -cne (Get-RecoveryFileHash "$temp\source\Boot\BCD")){throw 'Backup mismatch.'}
  # Execute the real snapshot function with a filesystem fixture and mocked OS inventory.
  New-Item -ItemType Directory -Path "$temp\windows\Windows\System32\Config" -Force | Out-Null
  foreach($f in @('SYSTEM','BCD-Template')){Set-Content -LiteralPath "$temp\windows\Windows\System32\Config\$f" -Value 'fixture'}
