@@ -4,7 +4,7 @@ Independent desktop product in nexvary/NEXVARY-DC. Initial languages: Arabic (RT
 
 ## Five workspaces
 1. Disk diagnostics / sector treatment: physical identity, transport, SMART, read-error mapping; validated write treatment later.
-2. Data rescue: image acquisition, recoverable-data prioritization, file recovery. Version 0.2 adds best-effort Windows physical imaging and read maps; 0.3 adds PNG/JPEG carving and contiguous FAT32 deleted-file candidates; resumable rescue and NTFS/exFAT recovery remain pending.
+2. Data rescue: image acquisition, recoverable-data prioritization, file recovery. Version 0.2 adds best-effort Windows physical imaging and read maps; 0.3 adds PNG/JPEG carving and contiguous FAT32 deleted-file candidates; Version 0.8 includes resumable rescue and NTFS/exFAT metadata recovery; see REPORT-0.8.0-AR.md for current scope.
 3. Maintenance / firmware: supported erase/sanitize, per-model compatibility, official firmware and before/after results. Version 0.2 adds filesystem scan/repair; firmware writes and physical sector treatment remain unsupported.
 4. Flash drives / memory cards: filesystem diagnostics and repair, image rescue, write-protection analysis. Version 0.2 implements external-device filesystem operations and partition management on Windows.
 5. Counterfeit capacity detection: report advertised bytes separately from verified test bytes. Never label sampled or filesystem-level verified bytes as exact physical NAND capacity.
@@ -25,3 +25,6 @@ A successful read of an image says nothing about the original drive's physical h
 - Specialist phase: vendor-specific firmware/service operations only when documented, supported and verified on sacrificial hardware. Never advertise universal PC-3000 equivalence.
 
 Each phase requires passing automated tests, real-device evidence for hardware-dependent claims, UI inspection and an updated capability matrix.
+
+## Current development after 0.8
+Offline Windows BCDBoot/SFC is implemented with explicit partition identities, plan expiry, different-disk boot-file backups and data-preservation acknowledgement. Physical and full boot-after-repair qualification remain pending; see WINDOWS-RECOVERY-AR.md.

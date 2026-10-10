@@ -71,6 +71,22 @@ QJsonObject storageProcess(const QJsonObject &request,std::atomic_bool *cancel=n
  Q_UNUSED(request);Q_UNUSED(cancel);return fail("Storage management is implemented for Windows in this release.");
 #endif
 }
+QJsonObject windowsRecoveryProcess(const QJsonObject &request) {
+#ifdef Q_OS_WIN
+ QTemporaryDir dir;
+ QFile helper(":/storage/windows_recovery.ps1");
+ if(!dir.isValid()||!helper.copy(dir.filePath("windows_recovery.ps1")))return fail("Windows recovery helper unavailable.");
+ const auto encoded=QString::fromLatin1(QJsonDocument(request).toJson(QJsonDocument::Compact).toBase64());
+ QProcess p;p.start("powershell.exe",{"-NoProfile","-NonInteractive","-ExecutionPolicy","Bypass","-File",dir.filePath("windows_recovery.ps1"),"-RequestBase64",encoded});
+ if(!p.waitForStarted(5000))return fail("Cannot start Windows recovery helper.");
+ p.waitForFinished(-1);
+ auto doc=QJsonDocument::fromJson(p.readAllStandardOutput().trimmed());
+ if(p.exitStatus()!=QProcess::NormalExit||!doc.isObject())return fail("Recovery helper failed: "+QString::fromUtf8(p.readAllStandardError()).left(2000));
+ return doc.object();
+#else
+ Q_UNUSED(request);return fail("Offline Windows repair requires Windows with Storage and BitLocker PowerShell modules.");
+#endif
+}
 QJsonObject bootRepairProcess(const QJsonObject &request) {
 #ifdef Q_OS_LINUX
  QTemporaryDir dir;
@@ -150,11 +166,23 @@ Controller::Controller(QObject *parent):QObject(parent) {
 Controller::~Controller(){m_cancel=true;m_watcher.waitForFinished();m_db.close();m_db=QSqlDatabase();QSqlDatabase::removeDatabase("dc-history");}
 void Controller::start(const QString &name,Work work) {
  if(m_busy)return;
- m_mutating=name.startsWith("storage_")||name=="boot_repair";
+ m_mutating=name.startsWith("storage_")||name=="boot_repair"||name=="windows_recovery";
  m_operation=name;m_cancel=false;m_busy=true;m_progress=0;
  m_report=QString::fromUtf8(QJsonDocument(QJsonObject{{"status","running"},{"operation",name}}).toJson(QJsonDocument::Indented));
  m_result = QVariantMap{{"status","running"},{"operation",name}};
  emit reportChanged();emit stateChanged();m_watcher.setFuture(QtConcurrent::run(std::move(work)));
+}
+void Controller::prepareWindowsRecovery(const QString &windowsRoot,const QString &bootRoot,const QString &backupRoot,const QString &mode,const QString &task) {
+ if(m_busy)return;
+ QJsonObject request{{"action","plan"},{"windowsRoot",windowsRoot},{"bootRoot",bootRoot},{"backupRoot",backupRoot},{"mode",mode},{"task",task}};
+ start("windows_recovery_plan",[request]{return windowsRecoveryProcess(request);});
+}
+void Controller::executeWindowsRecovery(const QString &confirmation,bool dataPreserved) {
+ if(m_busy)return;
+ const auto plan=QJsonObject::fromVariantMap(m_result.value("plan").toMap());
+ if(plan.value("mode")!="windows_offline"||!dataPreserved){setResult(fail("Inspect the Windows repair plan and preserve data first."));return;}
+ QJsonObject request{{"action","apply"},{"plan",plan},{"confirmation",confirmation},{"dataPreserved",dataPreserved}};
+ start("windows_recovery",[request]{return windowsRecoveryProcess(request);});
 }
 void Controller::prepareBootRepair(const QString &root,const QString &esp,const QString &disk,const QString &mode,const QString &backup) {
  if(m_busy)return;
