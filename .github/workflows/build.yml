@@ -114,9 +114,9 @@ jobs:
             if($p.ExitCode -ne 0) {throw 'Selective retry UI screenshot failed'}
           }
           foreach($language in @('ar','en')) {
-            foreach($view in @('smart','windows-recovery')) {
+            foreach($view in @('smart','windows-recovery','windows-recovery-repair')) {
               $arguments=@('--font-proof','--compact','--screenshot',"out/ui-windows/$view-$language.png")
-              if($view -eq 'smart') {$arguments+=@('--page','1','--smart-proof')} else {$arguments+=@('--page','8','--windows-recovery')}
+              if($view -eq 'smart') {$arguments+=@('--page','1','--smart-proof')} else {$arguments+=@('--page','8',('--'+$view))}
               if($language -eq 'en') {$arguments+='--english'}
               $p=Start-Process build/Release/nexvary_dc.exe -ArgumentList $arguments -PassThru
               if(!$p.WaitForExit(45000)) {$p.Kill();throw 'New UI screenshot timeout'}

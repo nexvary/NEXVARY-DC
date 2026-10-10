@@ -14,8 +14,6 @@ function Get-RecoveryVolume([string]$Path) {
  $vol=Get-Volume -DriveLetter $root[0] -ErrorAction Stop
  if($disk.IsOffline -or $disk.IsReadOnly -or $part[0].IsReadOnly -or $vol.HealthStatus -ne 'Healthy'){throw 'Offline, read-only or unhealthy target. Rescue to healthy storage first.'}
  if([string]::IsNullOrWhiteSpace([string]$disk.UniqueId)){throw 'No stable disk identity.'}
- $locked=Get-BitLockerVolume -MountPoint $root -ErrorAction Stop
- if([string]$locked.LockStatus -ne 'Unlocked'){throw 'BitLocker volume is locked. Unlock it outside this tool first.'}
  return [ordered]@{root=$root;diskId=[string]$disk.UniqueId;serial=[string]$disk.SerialNumber;diskBytes=[long]$disk.Size;diskNumber=[int]$disk.Number;style=[string]$disk.PartitionStyle;partition=[int]$part[0].PartitionNumber;offset=[long]$part[0].Offset;bytes=[long]$part[0].Size;volumeId=[string]$vol.UniqueId;filesystem=[string]$vol.FileSystem;gpt=[string]$part[0].GptType;active=[bool]$part[0].IsActive;protected=[bool]($disk.IsBoot -or $disk.IsSystem -or $part[0].IsBoot -or $part[0].IsSystem);free=[long]$vol.SizeRemaining}
 }
 function Assert-RecoveryLayout($Windows,$Boot,$Backup,[string]$Mode) {
@@ -56,6 +54,8 @@ function Get-RecoverySnapshot($Request) {
  $boot=Get-RecoveryVolume ([string]$Request.bootRoot)
  $backup=Get-RecoveryVolume ([string]$Request.backupRoot)
  Assert-RecoveryLayout $windows $boot $backup ([string]$Request.mode)
+ $locked=@(Get-BitLockerVolume -MountPoint $windows.root -ErrorAction Stop)
+ if($locked.Count -ne 1 -or [string]$locked[0].LockStatus -ne 'Unlocked'){throw 'Windows BitLocker state is unavailable or locked. Unlock it outside this tool first.'}
  $win=Join-Path $windows.root 'Windows'
  if($win -ieq $env:SystemRoot){throw 'The running Windows installation is protected.'}
  foreach($file in @('System32\Config\SYSTEM','System32\Config\BCD-Template','System32\ntoskrnl.exe')) {

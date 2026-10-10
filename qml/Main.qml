@@ -10,6 +10,7 @@ ApplicationWindow {
  property int page:0
  property bool bootRepairMode:false
  property bool windowsRecoveryMode:false
+ property bool windowsRecoveryRepair:false
  property var healthProof:null
  property int diskIndex:-1
  property var selectedDisk: diskIndex>=0&&diskIndex<backend.disks.length?backend.disks[diskIndex]:({})

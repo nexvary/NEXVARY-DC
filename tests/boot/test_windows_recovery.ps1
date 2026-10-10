@@ -32,6 +32,7 @@ foreach($task in @('sfc_verify','sfc_repair')) {
 $s.task='format';Assert-Rejected {Get-RecoveryCommand $s 'E:\logs'}
 $hash=Get-RecoveryHash $s;$w.diskId='changed'
 if((Get-RecoveryHash $s) -ceq $hash){throw 'Changed disk accepted.'}
+$originalSnapshot=${function:Get-RecoverySnapshot}
 # Exercise the same apply guard used by the production entry point.
 $script:fixture=$s
 function Get-RecoverySnapshot($Request){return $script:fixture}
@@ -51,6 +52,24 @@ try {
  $s.mode='BIOS';$s.boot.root="$temp\source\";$s.backup.root="$temp\backup\"
  $saved=Backup-RecoveryFiles $s
  if((Get-FileHash "$saved\Boot\BCD").Hash -cne (Get-FileHash "$temp\source\Boot\BCD").Hash){throw 'Backup mismatch.'}
+ # Execute the real snapshot function with a filesystem fixture and mocked OS inventory.
+ New-Item -ItemType Directory -Path "$temp\windows\Windows\System32\Config" -Force | Out-Null
+ foreach($f in @('SYSTEM','BCD-Template')){Set-Content -LiteralPath "$temp\windows\Windows\System32\Config\$f" -Value 'fixture'}
+ Set-Content -LiteralPath "$temp\windows\Windows\System32\ntoskrnl.exe" -Value 'fixture'
+ $script:volumes=@{}
+ $script:volumes.w=[ordered]@{root="$temp\windows\";diskId='target';protected=$false;filesystem='NTFS';free=1GB}
+ $script:volumes.b=[ordered]@{root="$temp\source\";diskId='target';protected=$false;filesystem='NTFS';style='MBR';gpt='';active=$true;free=1GB}
+ $script:volumes.e=[ordered]@{root="$temp\backup\";diskId='backup';free=1GB}
+ function Get-RecoveryVolume($Path){return ([ordered]@{} + $script:volumes[$Path])}
+ function Get-BitLockerVolume {return @{LockStatus='Unlocked'}}
+ $fixtureRequest=@{windowsRoot='w';bootRoot='b';backupRoot='e';mode='BIOS';task='bcdboot'}
+ $actual=& $originalSnapshot $fixtureRequest
+ if(@($actual.bootState).Count -ne 1 -or !$actual.templateHash){throw 'Actual snapshot incomplete.'}
+ $originalHash=Get-RecoveryHash $actual
+ Set-Content -LiteralPath "$temp\source\Boot\BCD" -Value 'changed-store'
+ if((Get-RecoveryHash (& $originalSnapshot $fixtureRequest)) -ceq $originalHash){throw 'Boot change did not invalidate snapshot.'}
+ function Get-BitLockerVolume {return @{LockStatus='Locked'}}
+ Assert-Rejected {& $originalSnapshot $fixtureRequest}
  $manifest=Get-Content "$saved\backup-manifest.json" -Raw | ConvertFrom-Json
  if(@($manifest.files).Count -ne 1 -or $manifest.automaticRollback){throw 'Incorrect backup report.'}
 } finally {Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue}

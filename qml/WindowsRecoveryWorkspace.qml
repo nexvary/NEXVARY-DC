@@ -11,7 +11,11 @@ Panel {
   Rectangle {visible:summary.rescueFirst===true;Layout.fillWidth:true;implicitHeight:risk.implicitHeight+24;color:"#3a2c22";radius:8
    Label {id:risk;anchors.fill:parent;anchors.margins:12;text:app.t("أولوية الإنقاذ: تظهر مؤشرات تعثر قراءة. في الصورة المرسلة، C5=0x10 يعني 16 قطاعًا معلقًا. تغيير حد التحذير لا يعالجها؛ لا تبدأ إصلاحًا يكتب على الأصل قبل حفظ البيانات.","Rescue priority: read-trouble indicators were reported. In the supplied screenshot C5=0x10 means 16 pending sectors. Changing the warning threshold does not fix them; preserve data before any repair writes to the original.");color:"#ffcd90";wrapMode:Text.WordWrap}
   }
-  Repeater {model:[
+  Flow {Layout.fillWidth:true;spacing:10
+   ActionButton {text:app.t("خطوات الإنقاذ أولًا","Preserve data first");primary:!app.windowsRecoveryRepair;onClicked:app.windowsRecoveryRepair=false}
+   ActionButton {visible:backend.windows;text:app.t("إصلاح نسخة Windows","Repair a Windows copy");primary:app.windowsRecoveryRepair;onClicked:app.windowsRecoveryRepair=true}
+  }
+  Repeater {model:app.windowsRecoveryRepair?[]:[
    {title:app.t("1. احفظ البيانات","1. Preserve data"),body:app.t("من حاسوب آخر أو بيئة حيّة، احفظ صورة القرص على قرص سليم مختلف. احتفظ بخريطة القراءة وتقرير SHA-256. المناطق غير المقروءة تبقى غير مكتملة؛ نفّذ محاولات إضافية مضبوطة فقط عند الحاجة. لا تختبر الكتابة أو الفورمات على النسخة الأصلية.","From another computer or a live environment, save a disk image to a different healthy disk. Retain the read map and SHA-256 report. Unreadable regions remain incomplete; use bounded additional attempts only when needed. Avoid write tests or formatting on the original.")},
    {title:app.t("2. استخدم أدوات الاسترداد","2. Enter recovery tools"),body:app.t("اضغط F1 إذا دخلت WinRE. إن تعذر ذلك، أقلع من وسيط Windows موثوق واختر إصلاح الكمبيوتر بدل تثبيت الآن. اختَر وضع UEFI أو BIOS المطابق للتثبيت الأصلي. احتفظ بمفتاح استرداد BitLocker عند استخدامه؛ لا تحذف القسم لتجاوز القفل.","Use F1 if it enters WinRE. Otherwise boot trusted Windows media and choose Repair your computer. Use the original installation's UEFI/BIOS mode. Have the BitLocker recovery key if needed; do not delete a partition to bypass encryption.")},
    {title:app.t("3. أصلح نسخة سليمة بعد الحفظ","3. Repair a healthy copy after backup"),body:app.t("بعد حفظ البيانات، استخدم استكشاف الأخطاء > خيارات متقدمة > إصلاح بدء التشغيل، ويفضل على نسخة إلى قرص سليم. إذا بدأ الخطأ بعد تحديث أو تعريف، راجع إزالة التحديثات أو استعادة النظام. الحفظ وحده لا يجعل القرص المتعطل سليمًا.","After preserving data, use Troubleshoot > Advanced options > Startup Repair, preferably on a clone on healthy storage. If the failure followed an update or driver change, consider uninstalling updates or System Restore. Backup does not make a failing drive healthy.")},
@@ -23,7 +27,7 @@ Panel {
    ActionButton {text:app.t("قراءة SMART","Read SMART");enabled:!backend.busy;onClicked:app.page=1}
    ActionButton {text:app.t("إرشادات Microsoft","Microsoft guidance");onClicked:Qt.openUrlExternally("https://support.microsoft.com/en-us/windows/experience/startup-boot/startup-repair")}
   }
-  ColumnLayout {visible:backend.windows;Layout.fillWidth:true;spacing:10
+  ColumnLayout {visible:backend.windows&&app.windowsRecoveryRepair;Layout.fillWidth:true;spacing:10
    Label {text:app.t("إصلاح تثبيت Windows غير العامل","Repair an offline Windows installation");font.bold:true;color:"#edf5fc";Layout.fillWidth:true;wrapMode:Text.WordWrap}
    Label {text:app.t("شغّل كمسؤول من Windows آخر مع وحدتي Storage وBitLocker، أو بيئة استرداد متوافقة. ركّب قسم Windows وقسم الإقلاع بحروف واضحة. اختر نسخة على قرص سليم؛ النسخة الاحتياطية لملفات الإقلاع لا تحفظ ملفاتك الشخصية. لا يُعدّل هذا المسار قطاعات BIOS أو إدخالات UEFI.","Run elevated from another Windows installation with Storage and BitLocker modules, or a compatible recovery environment. Mount Windows and boot partitions with explicit letters. Prefer a clone on healthy storage; boot-file backup does not preserve your personal files. This path does not modify BIOS boot sectors or UEFI entries.");color:"#efbd77";Layout.fillWidth:true;wrapMode:Text.WordWrap}
    TextField {id:offlineWindows;placeholderText:app.t("جذر قسم Windows، مثال D:\\","Windows partition root, e.g. D:\\");Layout.fillWidth:true;enabled:!backend.busy;selectByMouse:true}
