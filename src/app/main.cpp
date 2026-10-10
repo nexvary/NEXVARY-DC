@@ -53,6 +53,7 @@ int main(int argc,char **argv) {
  }
  if(args.contains("--english"))root->setProperty("arabic",false);
  if(args.contains("--selective-retry")){root->setProperty("diskRescueWorkspace",true);root->setProperty("selectiveRetryEnabled",true);}
+ if(args.contains("--windows-recovery-repair")){root->setProperty("windowsRecoveryMode",true);root->setProperty("windowsRecoveryRepair",true);}
  if(args.contains("--windows-recovery"))root->setProperty("windowsRecoveryMode",true);
  if(args.contains("--smart-proof")){
   const QJsonObject raw{{"model_name","SYNTHETIC TEST — ST1000DM010-2EP102"},{"serial_number","TEST-C5-16"},{"firmware_version","1001"},{"smart_status",QJsonObject{{"passed",true}}},{"temperature",QJsonObject{{"current",33}}},{"power_on_time",QJsonObject{{"hours",11862}}},{"power_cycle_count",3124},{"device",QJsonObject{{"protocol","ATA"}}},{"ata_smart_attributes",QJsonObject{{"table",QJsonArray{QJsonObject{{"id",197},{"name","Current_Pending_Sector"},{"value",100},{"worst",100},{"thresh",0},{"raw",QJsonObject{{"value",16},{"string","16"}}}},QJsonObject{{"id",5},{"name","Reallocated_Sector_Ct"},{"raw",QJsonObject{{"value",0}}}},QJsonObject{{"id",198},{"name","Offline_Uncorrectable"},{"raw",QJsonObject{{"value",0}}}}}}}}};

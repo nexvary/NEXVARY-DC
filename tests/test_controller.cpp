@@ -49,6 +49,8 @@ private slots:
   QCoreApplication::setApplicationName("DC-controller-test");
   Controller c;QTRY_VERIFY_WITH_TIMEOUT(!c.busy(),20000);
   QVERIFY(!c.volumes().isEmpty());
+  c.executeWindowsRecovery("fabricated",true);QCOMPARE(c.result().value("status").toString(),"error");
+  c.executeWindowsRecovery("fabricated",false);QCOMPARE(c.result().value("status").toString(),"error");
   c.executeStorage("fabricated-token","device",true);QCOMPARE(c.result().value("status").toString(),"error");
   c.inspectHealth("untrusted-device");QCOMPARE(c.result().value("status").toString(),"error");
   QTemporaryDir d;QFile f(d.filePath("source.img"));QVERIFY(f.open(QIODevice::WriteOnly));f.write("valid image data");f.close();

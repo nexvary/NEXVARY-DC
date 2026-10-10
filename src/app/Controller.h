@@ -58,6 +58,8 @@ public:
  Q_INVOKABLE void rescueDisk(const QString &device,const QString &destination,bool acknowledged,bool resume=false,int sectorBytes=512,int retries=1);
  Q_INVOKABLE void retryRescueDisk(const QString &device,const QString &previous,const QString &destination,bool acknowledged,bool resume=false,int sectorBytes=512,int retries=1);
  Q_INVOKABLE void recoverImage(const QString &source,const QString &directory,int mode=0,int maxFiles=100000);
+ Q_INVOKABLE void prepareWindowsRecovery(const QString &windowsRoot,const QString &bootRoot,const QString &backupRoot,const QString &mode,const QString &task);
+ Q_INVOKABLE void executeWindowsRecovery(const QString &confirmation,bool dataPreserved);
  Q_INVOKABLE void prepareBootRepair(const QString &root,const QString &esp,const QString &disk,const QString &mode,const QString &backup);
  Q_INVOKABLE void executeBootRepair(const QString &confirmation);
  Q_INVOKABLE void prepareFirmwareBoot(const QString &id=QString());
